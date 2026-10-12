@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Sidebar } from '@/components/Sidebar';
 import AdminMobileProfile from '@/components/AdminMobileProfile';
 import { Card, Badge } from '@/components/common';
-import { SkeletonModelDetail, SkeletonStatCard, SkeletonChart } from '@/components/Skeleton';
+import { SkeletonModelDetail } from '@/components/Skeleton';
 import { useGetPredictionsOverview } from '@/hooks/useQueries';
 import {
   Sparkles,
@@ -26,7 +26,8 @@ import {
   ChevronDown,
   ArrowRight,
   ShieldAlert,
-  Award
+  Award,
+  ChevronRight
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -84,108 +85,100 @@ export const PredictionsPage: React.FC = () => {
     return Array.from(hubs);
   }, [attrition]);
 
+  // Calculate peak leave day
   const peakDay = useMemo(() => {
     if (!leaveDemand?.daily_forecasts || leaveDemand.daily_forecasts.length === 0) return null;
     return [...leaveDemand.daily_forecasts].sort((a: any, b: any) => b.predicted_leave_count - a.predicted_leave_count)[0];
   }, [leaveDemand]);
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 overflow-hidden font-sans">
-      {/* Sidebar */}
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans">
+      {/* Sidebar - Desktop Fixed / Mobile Drawer */}
       <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col h-full overflow-y-auto">
-        {/* Top Navbar */}
-        <header className="sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="lg:hidden p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
-              aria-label="Toggle navigation"
-            >
-              <Layers size={18} />
-            </button>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                  Predictive Workforce Intelligence
-                </h1>
-                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 flex items-center gap-1">
-                  <Sparkles size={11} /> ML Production Engine
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Empirical Machine Learning Models: Attrition Probabilities, Leave Demand & Staffing Deficits
-              </p>
+      {/* Main Content Area: Indented on desktop with lg:ml-64 so it fits beside the fixed sidebar */}
+      <div className="lg:ml-64 flex flex-col min-h-screen">
+        {/* Mobile Header / Profile (only visible on mobile: block md:hidden) */}
+        <AdminMobileProfile />
+
+        {/* Desktop Sticky Header */}
+        <header className="hidden md:flex sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur border-b border-slate-200 dark:border-slate-800 px-6 py-4 items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                Predictive Workforce Intelligence
+              </h1>
+              <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 flex items-center gap-1">
+                <Sparkles size={11} /> ML Production Engine
+              </span>
             </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Multi-variable Empirical Models: Resignation Probabilities, Leave Demand & Staffing Deficit Syntheses
+            </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => refetch()}
-              disabled={isFetching}
-              className="p-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-600 dark:text-slate-300 disabled:opacity-50"
-              title="Refresh Predictions"
-            >
-              <RefreshCw size={16} className={isFetching ? 'animate-spin text-blue-600' : ''} />
-            </button>
-            <AdminMobileProfile />
-          </div>
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="p-2 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-slate-600 dark:text-slate-300 disabled:opacity-50"
+            title="Refresh Predictions"
+          >
+            <RefreshCw size={16} className={isFetching ? 'animate-spin text-blue-600' : ''} />
+          </button>
         </header>
 
-        {/* Control Sub-Bar */}
-        <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-3">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-            {/* Tabs */}
-            <div className="flex flex-wrap items-center gap-2">
+        {/* Tab & Horizon Navigation Bar - Responsive Sticky Header */}
+        <div className="sticky top-0 md:top-auto z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 px-3 sm:px-6 py-2.5 sm:py-3 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            {/* Scrollable Tabs on Mobile */}
+            <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar py-0.5 -mx-1 px-1">
               <button
                 onClick={() => setActiveTab('attrition')}
-                className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 ${
+                className={`shrink-0 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5 ${
                   activeTab === 'attrition'
-                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20'
+                    ? 'bg-blue-600 text-white shadow-xs shadow-blue-500/20'
                     : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
-                <UserX size={15} />
-                <span>1. Resignation / Attrition Risk</span>
+                <UserX size={14} className="shrink-0" />
+                <span>1. Attrition Risk</span>
               </button>
 
               <button
                 onClick={() => setActiveTab('leave')}
-                className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 ${
+                className={`shrink-0 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5 ${
                   activeTab === 'leave'
-                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20'
+                    ? 'bg-blue-600 text-white shadow-xs shadow-blue-500/20'
                     : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
-                <Calendar size={15} />
-                <span>2. Leave Demand Forecast</span>
+                <Calendar size={14} className="shrink-0" />
+                <span>2. Leave Demand</span>
               </button>
 
               <button
                 onClick={() => setActiveTab('workforce')}
-                className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 ${
+                className={`shrink-0 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5 ${
                   activeTab === 'workforce'
-                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20'
+                    ? 'bg-blue-600 text-white shadow-xs shadow-blue-500/20'
                     : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
-                <ShieldAlert size={15} />
-                <span>3. Staffing Risk & Resource Gap</span>
+                <ShieldAlert size={14} className="shrink-0" />
+                <span>3. Staffing Risk</span>
               </button>
             </div>
 
             {/* Horizon Filter for Leave & Workforce Tabs */}
             {(activeTab === 'leave' || activeTab === 'workforce') && (
-              <div className="flex items-center gap-2 self-start md:self-auto">
-                <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Horizon:</span>
+              <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+                <span className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium">Horizon:</span>
                 <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-0.5">
                   {[7, 14, 30].map((d) => (
                     <button
                       key={d}
                       onClick={() => setHorizonDays(d)}
-                      className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all ${
+                      className={`px-2.5 py-1 text-[11px] sm:text-xs font-semibold rounded-md transition-all ${
                         horizonDays === d
                           ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xs'
                           : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
@@ -200,8 +193,8 @@ export const PredictionsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Main Body */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl w-full mx-auto">
+        {/* Main Dashboard Content */}
+        <main className="flex-1 p-3 sm:p-5 lg:p-6 space-y-4 sm:space-y-6 max-w-7xl w-full mx-auto pb-32 lg:pb-10 overflow-x-hidden">
           {/* Skeleton Loading State */}
           {isLoading ? (
             <SkeletonModelDetail />
@@ -227,97 +220,95 @@ export const PredictionsPage: React.FC = () => {
               {/* TAB 1: EMPLOYEE RESIGNATION / ATTRITION RISK */}
               {/* ======================================================== */}
               {activeTab === 'attrition' && attrition && (
-                <div className="space-y-6 animate-fadeIn">
-                  {/* Top Summary Stats */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs">
+                <div className="space-y-4 sm:space-y-6 animate-fadeIn">
+                  {/* Top Summary Stats (2x2 on mobile, 4 in row on desktop) */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 sm:p-5 shadow-xs space-y-1">
                       <div className="flex justify-between items-start">
-                        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                          Analyzed Workforce
+                        <span className="text-[10px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                          Workforce
                         </span>
-                        <Users size={16} className="text-blue-500" />
+                        <Users size={15} className="text-blue-500 shrink-0" />
                       </div>
-                      <div className="text-2xl font-bold mt-2 text-slate-800 dark:text-white">
+                      <div className="text-xl sm:text-2xl font-bold font-mono text-slate-800 dark:text-white">
                         {attrition.total_analyzed}
                       </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        Active workforce evaluated with ML
+                      <div className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 truncate">
+                        Active staff evaluated
                       </div>
                     </div>
 
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 sm:p-5 shadow-xs space-y-1">
                       <div className="flex justify-between items-start">
-                        <span className="text-xs font-semibold text-red-600 dark:text-red-400 uppercase tracking-wider">
-                          High Attrition Risk
+                        <span className="text-[10px] sm:text-xs font-semibold text-red-600 dark:text-red-400 uppercase tracking-wider">
+                          High Risk
                         </span>
-                        <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
+                        <span className="w-2 h-2 rounded-full bg-red-500 animate-ping shrink-0" />
                       </div>
-                      <div className="text-2xl font-bold mt-2 text-red-600 dark:text-red-400">
+                      <div className="text-xl sm:text-2xl font-bold font-mono text-red-600 dark:text-red-400">
                         {attrition.high_risk_count}
                       </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      <div className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 truncate">
                         {attrition.total_analyzed > 0
-                          ? `${Math.round((attrition.high_risk_count / attrition.total_analyzed) * 100)}% of workforce at risk`
-                          : 'Probability ≥ 60%'}
+                          ? `${Math.round((attrition.high_risk_count / attrition.total_analyzed) * 100)}% of workforce`
+                          : 'Prob. ≥ 60%'}
                       </div>
                     </div>
 
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 sm:p-5 shadow-xs space-y-1">
                       <div className="flex justify-between items-start">
-                        <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
-                          Moderate Risk
+                        <span className="text-[10px] sm:text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+                          Medium Risk
                         </span>
-                        <AlertTriangle size={16} className="text-amber-500" />
+                        <AlertTriangle size={15} className="text-amber-500 shrink-0" />
                       </div>
-                      <div className="text-2xl font-bold mt-2 text-amber-600 dark:text-amber-400">
+                      <div className="text-xl sm:text-2xl font-bold font-mono text-amber-600 dark:text-amber-400">
                         {attrition.medium_risk_count}
                       </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        Watchlist (30% – 59% prob.)
+                      <div className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 truncate">
+                        Watchlist (30%–59%)
                       </div>
                     </div>
 
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 sm:p-5 shadow-xs space-y-1">
                       <div className="flex justify-between items-start">
-                        <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
-                          Champion Model
+                        <span className="text-[10px] sm:text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
+                          Top Model
                         </span>
-                        <Award size={16} className="text-emerald-500" />
+                        <Award size={15} className="text-emerald-500 shrink-0" />
                       </div>
-                      <div className="text-base font-bold mt-2 text-slate-800 dark:text-white truncate">
+                      <div className="text-sm sm:text-base font-bold text-slate-800 dark:text-white truncate">
                         {attrition.model_name}
                       </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        Ensemble multi-variable scoring
+                      <div className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 truncate">
+                        Ensemble Classifier
                       </div>
                     </div>
                   </div>
 
-                  {/* Model Performance Comparison & Feature Importance */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Benchmark & Feature Importance */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                     {/* Model Evaluation Comparison */}
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4 shadow-xs">
-                      <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-800">
-                        <div>
-                          <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                            <BarChart3 size={15} className="text-blue-500" />
-                            Model Evaluation & Comparative Benchmark
-                          </h2>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">
-                            Supervised classification metrics on validated workforce dataset
-                          </p>
-                        </div>
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-5 space-y-3 sm:space-y-4 shadow-xs">
+                      <div className="pb-2 border-b border-slate-100 dark:border-slate-800">
+                        <h2 className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                          <BarChart3 size={15} className="text-blue-500" />
+                          Model Performance Comparison
+                        </h2>
+                        <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
+                          Classification benchmark on company validation dataset
+                        </p>
                       </div>
 
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-xs text-left">
+                      <div className="overflow-x-auto -mx-1 sm:mx-0">
+                        <table className="w-full text-xs text-left min-w-[340px]">
                           <thead>
                             <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-semibold">
-                              <th className="py-2 px-3">Algorithm</th>
+                              <th className="py-2 px-2.5">Model</th>
                               <th className="py-2 px-2 text-right">Accuracy</th>
                               <th className="py-2 px-2 text-right">Precision</th>
                               <th className="py-2 px-2 text-right">Recall</th>
-                              <th className="py-2 px-2 text-right">F1 Score</th>
+                              <th className="py-2 px-2 text-right">F1</th>
                               <th className="py-2 px-2 text-right">ROC-AUC</th>
                             </tr>
                           </thead>
@@ -331,17 +322,17 @@ export const PredictionsPage: React.FC = () => {
                                     isTop ? 'bg-blue-50/50 dark:bg-blue-950/20 font-medium' : ''
                                   }`}
                                 >
-                                  <td className="py-2.5 px-3 flex items-center gap-1.5">
-                                    {isTop && <CheckCircle size={13} className="text-blue-600" />}
+                                  <td className="py-2 px-2.5 flex items-center gap-1.5">
+                                    {isTop && <CheckCircle size={12} className="text-blue-600 shrink-0" />}
                                     <span className={isTop ? 'text-blue-600 dark:text-blue-400 font-bold' : ''}>
                                       {m.model_name}
                                     </span>
                                   </td>
-                                  <td className="py-2.5 px-2 text-right font-mono">{(m.accuracy * 100).toFixed(1)}%</td>
-                                  <td className="py-2.5 px-2 text-right font-mono">{(m.precision * 100).toFixed(1)}%</td>
-                                  <td className="py-2.5 px-2 text-right font-mono">{(m.recall * 100).toFixed(1)}%</td>
-                                  <td className="py-2.5 px-2 text-right font-mono">{(m.f1_score * 100).toFixed(1)}%</td>
-                                  <td className="py-2.5 px-2 text-right font-mono font-bold text-blue-600 dark:text-blue-400">
+                                  <td className="py-2 px-2 text-right font-mono">{(m.accuracy * 100).toFixed(1)}%</td>
+                                  <td className="py-2 px-2 text-right font-mono">{(m.precision * 100).toFixed(1)}%</td>
+                                  <td className="py-2 px-2 text-right font-mono">{(m.recall * 100).toFixed(1)}%</td>
+                                  <td className="py-2 px-2 text-right font-mono">{(m.f1_score * 100).toFixed(1)}%</td>
+                                  <td className="py-2 px-2 text-right font-mono font-bold text-blue-600 dark:text-blue-400">
                                     {(m.roc_auc * 100).toFixed(1)}%
                                   </td>
                                 </tr>
@@ -352,24 +343,24 @@ export const PredictionsPage: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Global Feature Importance Chart */}
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4 shadow-xs">
+                    {/* Feature Importance Chart */}
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-5 space-y-3 sm:space-y-4 shadow-xs">
                       <div>
-                        <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                        <h2 className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                           <Target size={15} className="text-indigo-500" />
-                          Global Feature Importance & Drivers
+                          Key Predictive Variables & Impact
                         </h2>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Relative predictive weight across workforce variables
+                        <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
+                          Feature weights explaining attrition probability
                         </p>
                       </div>
 
-                      <div className="h-56">
+                      <div className="h-52 sm:h-56">
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart
                             layout="vertical"
                             data={attrition.global_feature_importance?.slice(0, 6) || []}
-                            margin={{ top: 5, right: 20, left: 60, bottom: 5 }}
+                            margin={{ top: 5, right: 15, left: 45, bottom: 5 }}
                           >
                             <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
                             <XAxis
@@ -382,7 +373,7 @@ export const PredictionsPage: React.FC = () => {
                               type="category"
                               dataKey="label"
                               tick={{ fontSize: 10 }}
-                              width={95}
+                              width={85}
                             />
                             <Tooltip
                               formatter={(value: any) => [`${(Number(value) * 100).toFixed(1)}% weight`, 'Impact']}
@@ -402,30 +393,30 @@ export const PredictionsPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Employee Risk Prediction Table */}
+                  {/* Employee Risk Table */}
                   <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs">
-                    <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="p-3.5 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
                       <div>
-                        <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                        <h2 className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                           <Zap size={15} className="text-amber-500" />
-                          Employee-Level Resignation Risk Predictions
+                          Individual Employee Resignation Predictions
                         </h2>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Multi-variable predictions combining age, tenure, overtime, absence, and role demands
+                        <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
+                          Predictions test multiple variables (Age ≥ 18 eligibility, overtime, tenure, absences)
                         </p>
                       </div>
 
                       {/* Filters */}
                       <div className="flex flex-wrap items-center gap-2">
-                        {/* Search */}
-                        <div className="relative">
-                          <Search size={14} className="absolute left-2.5 top-2.5 text-slate-400" />
+                        {/* Search Input */}
+                        <div className="relative flex-1 sm:flex-initial">
+                          <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
                           <input
                             type="text"
-                            placeholder="Search name, code, role..."
+                            placeholder="Search employee..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className="w-full sm:w-48 pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 focus:outline-none focus:ring-1 focus:ring-blue-500"
                           />
                         </div>
 
@@ -433,7 +424,7 @@ export const PredictionsPage: React.FC = () => {
                         <select
                           value={selectedHubFilter}
                           onChange={(e) => setSelectedHubFilter(e.target.value)}
-                          className="py-1.5 px-2.5 text-xs rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 focus:outline-none"
+                          className="py-1.5 px-2 text-xs rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 focus:outline-none"
                         >
                           <option value="all">All Hubs</option>
                           {uniqueHubs.map((h) => (
@@ -447,7 +438,7 @@ export const PredictionsPage: React.FC = () => {
                         <select
                           value={selectedRiskFilter}
                           onChange={(e) => setSelectedRiskFilter(e.target.value)}
-                          className="py-1.5 px-2.5 text-xs rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 focus:outline-none"
+                          className="py-1.5 px-2 text-xs rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 focus:outline-none"
                         >
                           <option value="all">All Risks</option>
                           <option value="high">High Risk</option>
@@ -457,18 +448,18 @@ export const PredictionsPage: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs text-left">
+                    <div className="overflow-x-auto -mx-1 sm:mx-0">
+                      <table className="w-full text-xs text-left min-w-[640px]">
                         <thead>
                           <tr className="bg-slate-50 dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800">
-                            <th className="py-3 px-4">Employee</th>
-                            <th className="py-3 px-3">Hub & Role</th>
-                            <th className="py-3 px-3">Age & Tenure</th>
-                            <th className="py-3 px-3">Overtime</th>
-                            <th className="py-3 px-3">Attendance</th>
-                            <th className="py-3 px-4">Resignation Probability</th>
-                            <th className="py-3 px-3">Primary Factor</th>
-                            <th className="py-3 px-3 text-right">Details</th>
+                            <th className="py-2.5 px-3">Employee</th>
+                            <th className="py-2.5 px-3">Hub & Role</th>
+                            <th className="py-2.5 px-2">Age/Tenure</th>
+                            <th className="py-2.5 px-2">OT Hours</th>
+                            <th className="py-2.5 px-2">Attendance</th>
+                            <th className="py-2.5 px-3">Resignation Prob.</th>
+                            <th className="py-2.5 px-3">Primary Factor</th>
+                            <th className="py-2.5 px-3 text-right">Action</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -487,21 +478,21 @@ export const PredictionsPage: React.FC = () => {
                                   key={emp.employee_id}
                                   className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
                                 >
-                                  <td className="py-3 px-4">
+                                  <td className="py-2.5 px-3">
                                     <div className="font-semibold text-slate-800 dark:text-slate-100">
                                       {emp.name}
                                     </div>
                                     <div className="text-[10px] text-slate-400 font-mono">{emp.code}</div>
                                   </td>
-                                  <td className="py-3 px-3">
-                                    <div className="text-slate-700 dark:text-slate-300">{emp.hub || 'HQ'}</div>
+                                  <td className="py-2.5 px-3">
+                                    <div className="text-slate-700 dark:text-slate-300 font-medium">{emp.hub || 'HQ'}</div>
                                     <div className="text-[10px] text-slate-500">{emp.role}</div>
                                   </td>
-                                  <td className="py-3 px-3 font-mono">
+                                  <td className="py-2.5 px-2 font-mono">
                                     <div>{emp.age} yrs</div>
-                                    <div className="text-[10px] text-slate-500">{emp.tenure_years} yrs tenure</div>
+                                    <div className="text-[10px] text-slate-500">{emp.tenure_years}y ten.</div>
                                   </td>
-                                  <td className="py-3 px-3 font-mono">
+                                  <td className="py-2.5 px-2 font-mono">
                                     <span
                                       className={
                                         emp.overtime_hours > 20
@@ -509,10 +500,10 @@ export const PredictionsPage: React.FC = () => {
                                           : 'text-slate-700 dark:text-slate-300'
                                       }
                                     >
-                                      {emp.overtime_hours} hrs
+                                      {emp.overtime_hours}h
                                     </span>
                                   </td>
-                                  <td className="py-3 px-3 font-mono">
+                                  <td className="py-2.5 px-2 font-mono">
                                     <span
                                       className={
                                         emp.attendance_rate < 85
@@ -523,9 +514,9 @@ export const PredictionsPage: React.FC = () => {
                                       {emp.attendance_rate}%
                                     </span>
                                   </td>
-                                  <td className="py-3 px-4">
-                                    <div className="flex items-center gap-2">
-                                      <div className="flex-1 bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+                                  <td className="py-2.5 px-3">
+                                    <div className="flex items-center gap-1.5">
+                                      <div className="w-16 bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
                                         <div
                                           className={`h-full rounded-full ${
                                             isHigh ? 'bg-red-500' : isMed ? 'bg-amber-500' : 'bg-emerald-500'
@@ -534,16 +525,16 @@ export const PredictionsPage: React.FC = () => {
                                         />
                                       </div>
                                       <span
-                                        className={`font-mono font-bold w-10 text-right ${
+                                        className={`font-mono font-bold text-xs ${
                                           isHigh ? 'text-red-600' : isMed ? 'text-amber-600' : 'text-emerald-600'
                                         }`}
                                       >
                                         {emp.resignation_probability_pct}%
                                       </span>
                                     </div>
-                                    <div className="mt-1">
+                                    <div className="mt-0.5">
                                       <span
-                                        className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                                        className={`inline-block px-1.5 py-0.2 rounded text-[9px] font-semibold ${
                                           isHigh
                                             ? 'bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-400'
                                             : isMed
@@ -555,15 +546,13 @@ export const PredictionsPage: React.FC = () => {
                                       </span>
                                     </div>
                                   </td>
-                                  <td className="py-3 px-3">
-                                    <span className="text-slate-600 dark:text-slate-300 text-xs">
-                                      {emp.primary_factor}
-                                    </span>
+                                  <td className="py-2.5 px-3 text-slate-600 dark:text-slate-300 text-[11px]">
+                                    {emp.primary_factor}
                                   </td>
-                                  <td className="py-3 px-3 text-right">
+                                  <td className="py-2.5 px-3 text-right">
                                     <button
                                       onClick={() => setSelectedEmployeeModal(emp)}
-                                      className="px-2.5 py-1 text-[11px] rounded bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-semibold transition"
+                                      className="px-2 py-1 text-[11px] rounded bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-semibold transition"
                                     >
                                       Inspect
                                     </button>
@@ -578,11 +567,11 @@ export const PredictionsPage: React.FC = () => {
                   </div>
 
                   {/* Academic Disclaimer Callout */}
-                  <div className="p-4 rounded-xl border border-blue-100 dark:border-blue-900/40 bg-blue-50/50 dark:bg-blue-950/20 flex items-start gap-3 text-xs text-slate-600 dark:text-slate-400">
-                    <Info size={16} className="text-blue-500 shrink-0 mt-0.5" />
+                  <div className="p-3.5 sm:p-4 rounded-xl border border-blue-100 dark:border-blue-900/40 bg-blue-50/50 dark:bg-blue-950/20 flex items-start gap-2.5 text-xs text-slate-600 dark:text-slate-400">
+                    <Info size={15} className="text-blue-500 shrink-0 mt-0.5" />
                     <div>
                       <span className="font-semibold text-slate-800 dark:text-slate-200">
-                        Methodology & Explainability Standards:{' '}
+                        Methodology Standards:{' '}
                       </span>
                       {attrition.academic_disclaimer}
                     </div>
@@ -594,97 +583,97 @@ export const PredictionsPage: React.FC = () => {
               {/* TAB 2: LEAVE DEMAND FORECASTING */}
               {/* ======================================================== */}
               {activeTab === 'leave' && leaveDemand && (
-                <div className="space-y-6 animate-fadeIn">
+                <div className="space-y-4 sm:space-y-6 animate-fadeIn">
                   {/* Summary Cards */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 sm:p-5 shadow-xs space-y-1">
                       <div className="flex justify-between items-start">
-                        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                          Horizon Window
+                        <span className="text-[10px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                          Horizon
                         </span>
-                        <Calendar size={16} className="text-indigo-500" />
+                        <Calendar size={15} className="text-indigo-500 shrink-0" />
                       </div>
-                      <div className="text-2xl font-bold mt-2 text-slate-800 dark:text-white">
+                      <div className="text-xl sm:text-2xl font-bold font-mono text-slate-800 dark:text-white">
                         {leaveDemand.days_ahead || leaveDemand.horizon_days || horizonDays} Days
                       </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        Operational projection window
+                      <div className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 truncate">
+                        Forecast window
                       </div>
                     </div>
 
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 sm:p-5 shadow-xs space-y-1">
                       <div className="flex justify-between items-start">
-                        <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
-                          Total Forecasted Leaves
+                        <span className="text-[10px] sm:text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
+                          Forecasted Leaves
                         </span>
-                        <TrendingUp size={16} className="text-blue-500" />
+                        <TrendingUp size={15} className="text-blue-500 shrink-0" />
                       </div>
-                      <div className="text-2xl font-bold mt-2 text-blue-600 dark:text-blue-400">
-                        {leaveDemand.predicted_leave_requests ?? leaveDemand.total_predicted_leaves ?? 0} Requests
+                      <div className="text-xl sm:text-2xl font-bold font-mono text-blue-600 dark:text-blue-400">
+                        {leaveDemand.predicted_leave_requests ?? leaveDemand.total_predicted_leaves ?? 0}
                       </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        Expected across all active hubs
+                      <div className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 truncate">
+                        Expected across all hubs
                       </div>
                     </div>
 
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 sm:p-5 shadow-xs space-y-1">
                       <div className="flex justify-between items-start">
-                        <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
-                          Peak Demand Date
+                        <span className="text-[10px] sm:text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+                          Peak Date
                         </span>
-                        <Clock size={16} className="text-amber-500" />
+                        <Clock size={15} className="text-amber-500 shrink-0" />
                       </div>
-                      <div className="text-lg font-bold mt-2 text-slate-800 dark:text-white truncate">
-                        {peakDay ? `${peakDay.date} (${peakDay.day_of_week})` : 'N/A'}
+                      <div className="text-sm sm:text-lg font-bold text-slate-800 dark:text-white truncate">
+                        {peakDay ? `${peakDay.date}` : 'N/A'}
                       </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        Highest predicted volume ({peakDay?.predicted_leave_count ?? 0} req)
+                      <div className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 truncate">
+                        Highest volume ({peakDay?.predicted_leave_count ?? 0} req)
                       </div>
                     </div>
 
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 sm:p-5 shadow-xs space-y-1">
                       <div className="flex justify-between items-start">
-                        <span className="text-xs font-semibold text-purple-600 dark:text-purple-400 uppercase tracking-wider">
-                          Forecasting Model
+                        <span className="text-[10px] sm:text-xs font-semibold text-purple-600 dark:text-purple-400 uppercase tracking-wider">
+                          Algorithm
                         </span>
-                        <Sparkles size={16} className="text-purple-500" />
+                        <Sparkles size={15} className="text-purple-500 shrink-0" />
                       </div>
-                      <div className="text-xs font-bold mt-2 text-slate-800 dark:text-white truncate">
-                        {leaveDemand.model_name}
+                      <div className="text-xs sm:text-sm font-bold text-slate-800 dark:text-white truncate">
+                        Poisson Regression
                       </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        Poisson-Gaussian calibrated
+                      <div className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 truncate">
+                        Multi-factor calibrated
                       </div>
                     </div>
                   </div>
 
-                  {/* Daily Forecast Chart with 95% Confidence Intervals */}
-                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4 shadow-xs">
+                  {/* Daily Forecast Timeline with 95% Confidence Interval */}
+                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-5 space-y-3 sm:space-y-4 shadow-xs">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
                       <div>
-                        <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                        <h2 className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                           <TrendingUp size={15} className="text-blue-500" />
-                          Multi-Factor Daily Leave Demand Forecast (with 95% Confidence Interval)
+                          Daily Leave Forecast (with 95% Confidence Interval)
                         </h2>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Expected daily leave requests considering day-of-week shoulder effects and calendar proximity
+                        <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
+                          Expected daily leave requests considering weekend proximity and historical demand
                         </p>
                       </div>
                       <div className="flex items-center gap-3 text-xs">
-                        <span className="flex items-center gap-1.5 text-blue-600">
-                          <span className="w-2.5 h-0.5 bg-blue-600 rounded" /> Expected Demand
+                        <span className="flex items-center gap-1.5 text-blue-600 font-medium">
+                          <span className="w-2.5 h-0.5 bg-blue-600 rounded" /> Expected
                         </span>
                         <span className="flex items-center gap-1.5 text-slate-400">
-                          <span className="w-2.5 h-2 bg-blue-100 dark:bg-blue-900/40 rounded" /> 95% CI Range
+                          <span className="w-2.5 h-2 bg-blue-100 dark:bg-blue-900/40 rounded" /> 95% Range
                         </span>
                       </div>
                     </div>
 
-                    <div className="h-72">
+                    <div className="h-60 sm:h-72">
                       <ResponsiveContainer width="100%" height="100%">
                         <AreaChart
                           data={leaveDemand.daily_forecasts || []}
-                          margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+                          margin={{ top: 10, right: 10, left: -15, bottom: 0 }}
                         >
                           <defs>
                             <linearGradient id="colorExpected" x1="0" y1="0" x2="0" y2="1">
@@ -711,7 +700,7 @@ export const PredictionsPage: React.FC = () => {
                               if (active && payload && payload.length) {
                                 const data = payload[0].payload;
                                 return (
-                                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 rounded-lg shadow-lg text-xs space-y-1">
+                                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-2.5 rounded-lg shadow-lg text-xs space-y-1">
                                     <div className="font-bold text-slate-800 dark:text-slate-100">
                                       {data.date} ({data.day_of_week})
                                     </div>
@@ -737,7 +726,7 @@ export const PredictionsPage: React.FC = () => {
                             type="monotone"
                             dataKey="predicted_leave_count"
                             stroke="#2563EB"
-                            strokeWidth={2.5}
+                            strokeWidth={2}
                             fill="url(#colorExpected)"
                           />
                         </AreaChart>
@@ -746,23 +735,23 @@ export const PredictionsPage: React.FC = () => {
                   </div>
 
                   {/* Hub Breakdown & Role Breakdown */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                     {/* By Hub */}
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4 shadow-xs">
-                      <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-5 space-y-3 sm:space-y-4 shadow-xs">
+                      <h2 className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                         <Users size={15} className="text-indigo-500" />
                         Predicted Leave Volume by Hub
                       </h2>
-                      <div className="h-56">
+                      <div className="h-52 sm:h-56">
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart
                             data={leaveDemand.hub_leave_demand || []}
-                            margin={{ top: 10, right: 10, left: -20, bottom: 20 }}
+                            margin={{ top: 10, right: 10, left: -25, bottom: 20 }}
                           >
                             <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
                             <XAxis
                               dataKey="hub"
-                              tick={{ fontSize: 10 }}
+                              tick={{ fontSize: 9 }}
                               angle={-20}
                               textAnchor="end"
                             />
@@ -775,21 +764,21 @@ export const PredictionsPage: React.FC = () => {
                     </div>
 
                     {/* By Role */}
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4 shadow-xs">
-                      <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-5 space-y-3 sm:space-y-4 shadow-xs">
+                      <h2 className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                         <Layers size={15} className="text-purple-500" />
-                        Predicted Leave Volume by Job Role
+                        Predicted Leave Volume by Role
                       </h2>
-                      <div className="h-56">
+                      <div className="h-52 sm:h-56">
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart
                             data={leaveDemand.role_leave_demand || []}
-                            margin={{ top: 10, right: 10, left: -20, bottom: 20 }}
+                            margin={{ top: 10, right: 10, left: -25, bottom: 20 }}
                           >
                             <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
                             <XAxis
                               dataKey="role"
-                              tick={{ fontSize: 10 }}
+                              tick={{ fontSize: 9 }}
                               angle={-20}
                               textAnchor="end"
                             />
@@ -803,27 +792,27 @@ export const PredictionsPage: React.FC = () => {
                   </div>
 
                   {/* Operational Drivers */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     {leaveDemand.key_drivers?.map((driver: any, i: number) => (
                       <div
                         key={i}
-                        className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-2 shadow-xs"
+                        className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-1.5 shadow-xs"
                       >
                         <div className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                          <Zap size={14} className="text-amber-500" />
+                          <Zap size={14} className="text-amber-500 shrink-0" />
                           {driver.factor}
                         </div>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">{driver.impact}</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">{driver.impact}</p>
                       </div>
                     ))}
                   </div>
 
                   {/* Disclaimer */}
-                  <div className="p-4 rounded-xl border border-blue-100 dark:border-blue-900/40 bg-blue-50/50 dark:bg-blue-950/20 flex items-start gap-3 text-xs text-slate-600 dark:text-slate-400">
-                    <Info size={16} className="text-blue-500 shrink-0 mt-0.5" />
+                  <div className="p-3.5 sm:p-4 rounded-xl border border-blue-100 dark:border-blue-900/40 bg-blue-50/50 dark:bg-blue-950/20 flex items-start gap-2.5 text-xs text-slate-600 dark:text-slate-400">
+                    <Info size={15} className="text-blue-500 shrink-0 mt-0.5" />
                     <div>
                       <span className="font-semibold text-slate-800 dark:text-slate-200">
-                        Operational Scheduling Guidance:{' '}
+                        Operational Guidance:{' '}
                       </span>
                       {leaveDemand.academic_disclaimer}
                     </div>
@@ -835,19 +824,19 @@ export const PredictionsPage: React.FC = () => {
               {/* TAB 3: WORKFORCE STAFFING RISK & RESOURCE GAP */}
               {/* ======================================================== */}
               {activeTab === 'workforce' && staffingRisk && (
-                <div className="space-y-6 animate-fadeIn">
+                <div className="space-y-4 sm:space-y-6 animate-fadeIn">
                   {/* Synthesis Equation Card */}
-                  <div className="bg-gradient-to-r from-blue-900/90 to-indigo-900/90 text-white rounded-2xl p-6 shadow-md">
-                    <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                  <div className="bg-gradient-to-r from-blue-900/95 to-indigo-900/95 text-white rounded-2xl p-4 sm:p-6 shadow-md">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
                       <div>
-                        <div className="text-xs uppercase tracking-wider text-blue-200 font-semibold mb-1">
+                        <div className="text-[10px] sm:text-xs uppercase tracking-wider text-blue-200 font-semibold mb-1">
                           Quantitative Synthesis Equation
                         </div>
-                        <div className="text-base sm:text-lg font-mono font-bold tracking-tight">
+                        <div className="text-xs sm:text-base font-mono font-bold tracking-tight break-words">
                           Active ({staffingRisk.total_active_workers}) − [Attrition Loss ({staffingRisk.total_predicted_attrition}) + Leave Absenteeism ({staffingRisk.total_predicted_leave})] = Available ({staffingRisk.total_estimated_available})
                         </div>
-                        <div className="text-xs text-blue-200/80 mt-1">
-                          Required Workload: {staffingRisk.total_required_workers} workers | Net Gap:{' '}
+                        <div className="text-[11px] sm:text-xs text-blue-200/80 mt-1">
+                          Required Demand: {staffingRisk.total_required_workers} workers | Net Gap:{' '}
                           <span
                             className={
                               staffingRisk.total_staffing_gap < 0
@@ -861,14 +850,14 @@ export const PredictionsPage: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3 shrink-0">
-                        <div className="px-3.5 py-1.5 rounded-full bg-white/10 backdrop-blur border border-white/20 text-xs font-bold uppercase tracking-wider">
-                          Overall Status:{' '}
+                      <div className="self-start md:self-auto shrink-0">
+                        <div className="px-3 py-1 rounded-full bg-white/10 backdrop-blur border border-white/20 text-xs font-bold uppercase tracking-wider">
+                          Overall Risk:{' '}
                           <span
                             className={
-                              staffingRisk.overall_risk === 'CRITICAL'
+                              staffingRisk.overall_risk === 'High' || staffingRisk.overall_risk === 'CRITICAL'
                                 ? 'text-red-300'
-                                : staffingRisk.overall_risk === 'MODERATE'
+                                : staffingRisk.overall_risk === 'Medium' || staffingRisk.overall_risk === 'MODERATE'
                                 ? 'text-amber-300'
                                 : 'text-emerald-300'
                             }
@@ -881,102 +870,101 @@ export const PredictionsPage: React.FC = () => {
                   </div>
 
                   {/* Summary Stat Cards */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 sm:p-5 shadow-xs space-y-1">
                       <div className="flex justify-between items-start">
-                        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                          Active Workforce
+                        <span className="text-[10px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                          Active Staff
                         </span>
-                        <Users size={16} className="text-blue-500" />
+                        <Users size={15} className="text-blue-500 shrink-0" />
                       </div>
-                      <div className="text-2xl font-bold mt-2 text-slate-800 dark:text-white">
+                      <div className="text-xl sm:text-2xl font-bold font-mono text-slate-800 dark:text-white">
                         {staffingRisk.total_active_workers}
                       </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        Total active employees across all hubs
+                      <div className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 truncate">
+                        Across all active hubs
                       </div>
                     </div>
 
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 sm:p-5 shadow-xs space-y-1">
                       <div className="flex justify-between items-start">
-                        <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
-                          Projected Absenteeism
+                        <span className="text-[10px] sm:text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+                          Absenteeism
                         </span>
-                        <Calendar size={16} className="text-amber-500" />
+                        <Calendar size={15} className="text-amber-500 shrink-0" />
                       </div>
-                      <div className="text-2xl font-bold mt-2 text-amber-600 dark:text-amber-400">
-                        {staffingRisk.total_predicted_leave} leaves
+                      <div className="text-xl sm:text-2xl font-bold font-mono text-amber-600 dark:text-amber-400">
+                        {staffingRisk.total_predicted_leave}
                       </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        + {staffingRisk.total_predicted_attrition} anticipated attritions
+                      <div className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 truncate">
+                        +{staffingRisk.total_predicted_attrition} attritions
                       </div>
                     </div>
 
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 sm:p-5 shadow-xs space-y-1">
                       <div className="flex justify-between items-start">
-                        <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-                          Net Available Workforce
+                        <span className="text-[10px] sm:text-xs font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                          Available
                         </span>
-                        <Target size={16} className="text-indigo-500" />
+                        <Target size={15} className="text-indigo-500 shrink-0" />
                       </div>
-                      <div className="text-2xl font-bold mt-2 text-indigo-600 dark:text-indigo-400">
+                      <div className="text-xl sm:text-2xl font-bold font-mono text-indigo-600 dark:text-indigo-400">
                         {staffingRisk.total_estimated_available}
                       </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        Workers effective for operations
+                      <div className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 truncate">
+                        Effective staff count
                       </div>
                     </div>
 
-                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs">
+                    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 sm:p-5 shadow-xs space-y-1">
                       <div className="flex justify-between items-start">
-                        <span className="text-xs font-semibold uppercase tracking-wider">
-                          Net Resource Gap
+                        <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider">
+                          Resource Gap
                         </span>
                         <ShieldAlert
-                          size={16}
+                          size={15}
                           className={staffingRisk.total_staffing_gap < 0 ? 'text-red-500' : 'text-emerald-500'}
                         />
                       </div>
                       <div
-                        className={`text-2xl font-bold mt-2 ${
+                        className={`text-xl sm:text-2xl font-bold font-mono ${
                           staffingRisk.total_staffing_gap < 0 ? 'text-red-600' : 'text-emerald-600'
                         }`}
                       >
                         {staffingRisk.total_staffing_gap > 0
                           ? `+${staffingRisk.total_staffing_gap}`
-                          : staffingRisk.total_staffing_gap}{' '}
-                        heads
+                          : staffingRisk.total_staffing_gap}
                       </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        {staffingRisk.total_staffing_gap < 0 ? 'Projected Shortage Deficit' : 'Staffing Surplus Buffer'}
+                      <div className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 truncate">
+                        {staffingRisk.total_staffing_gap < 0 ? 'Deficit Shortage' : 'Surplus Buffer'}
                       </div>
                     </div>
                   </div>
 
                   {/* Hub-by-Hub Staffing Analysis Table */}
                   <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs">
-                    <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800">
-                      <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                    <div className="p-3.5 sm:p-5 border-b border-slate-200 dark:border-slate-800">
+                      <h2 className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                         <Shield size={15} className="text-blue-500" />
                         Hub-by-Hub Staffing Shortage & Resource Gap Breakdown
                       </h2>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Quantitative comparison of Required vs Available headcount across logistic hubs
+                      <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
+                        Quantitative comparison of Required vs Available headcount across logistic delivery centers
                       </p>
                     </div>
 
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs text-left">
+                    <div className="overflow-x-auto -mx-1 sm:mx-0">
+                      <table className="w-full text-xs text-left min-w-[620px]">
                         <thead>
                           <tr className="bg-slate-50 dark:bg-slate-950 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800">
-                            <th className="py-3 px-4">Hub Name</th>
-                            <th className="py-3 px-3 text-right">Active</th>
-                            <th className="py-3 px-3 text-right">Exp. Leaves</th>
-                            <th className="py-3 px-3 text-right">Exp. Attrition</th>
-                            <th className="py-3 px-3 text-right">Estimated Available</th>
-                            <th className="py-3 px-3 text-right">Required Demand</th>
-                            <th className="py-3 px-4 text-center">Net Gap / Deficit</th>
-                            <th className="py-3 px-4">Status & Action</th>
+                            <th className="py-2.5 px-3">Hub Name</th>
+                            <th className="py-2.5 px-2 text-right">Active</th>
+                            <th className="py-2.5 px-2 text-right">Leaves</th>
+                            <th className="py-2.5 px-2 text-right">Attrition</th>
+                            <th className="py-2.5 px-2 text-right">Available</th>
+                            <th className="py-2.5 px-2 text-right">Required</th>
+                            <th className="py-2.5 px-3 text-center">Net Gap</th>
+                            <th className="py-2.5 px-3">Status & Action</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -990,25 +978,25 @@ export const PredictionsPage: React.FC = () => {
                                   isCritical ? 'bg-red-50/30 dark:bg-red-950/20' : ''
                                 }`}
                               >
-                                <td className="py-3 px-4 font-bold text-slate-800 dark:text-slate-100">
+                                <td className="py-2.5 px-3 font-bold text-slate-800 dark:text-slate-100">
                                   {record.hub}
                                 </td>
-                                <td className="py-3 px-3 text-right font-mono">{record.active_workers}</td>
-                                <td className="py-3 px-3 text-right font-mono text-amber-600">
+                                <td className="py-2.5 px-2 text-right font-mono">{record.active_workers}</td>
+                                <td className="py-2.5 px-2 text-right font-mono text-amber-600">
                                   -{record.predicted_leave}
                                 </td>
-                                <td className="py-3 px-3 text-right font-mono text-red-500">
+                                <td className="py-2.5 px-2 text-right font-mono text-red-500">
                                   -{record.predicted_attrition}
                                 </td>
-                                <td className="py-3 px-3 text-right font-mono font-semibold text-slate-800 dark:text-slate-200">
+                                <td className="py-2.5 px-2 text-right font-mono font-semibold text-slate-800 dark:text-slate-200">
                                   {record.estimated_available}
                                 </td>
-                                <td className="py-3 px-3 text-right font-mono text-slate-500">
+                                <td className="py-2.5 px-2 text-right font-mono text-slate-500">
                                   {record.required_workers}
                                 </td>
-                                <td className="py-3 px-4 text-center">
+                                <td className="py-2.5 px-3 text-center">
                                   <span
-                                    className={`inline-block px-2.5 py-1 rounded font-mono font-bold text-xs ${
+                                    className={`inline-block px-2 py-0.5 rounded font-mono font-bold text-xs ${
                                       isShortage
                                         ? 'bg-red-100 dark:bg-red-950/70 text-red-600 dark:text-red-400'
                                         : 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400'
@@ -1017,10 +1005,10 @@ export const PredictionsPage: React.FC = () => {
                                     {record.staffing_gap > 0 ? `+${record.staffing_gap}` : record.staffing_gap}
                                   </span>
                                 </td>
-                                <td className="py-3 px-4">
-                                  <div className="flex items-center gap-2">
+                                <td className="py-2.5 px-3">
+                                  <div className="flex items-center gap-1.5">
                                     <span
-                                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
                                         isCritical
                                           ? 'bg-red-600 text-white'
                                           : record.status === 'Tight Capacity'
@@ -1031,7 +1019,7 @@ export const PredictionsPage: React.FC = () => {
                                       {record.status}
                                     </span>
                                   </div>
-                                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                                  <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
                                     {record.recommended_action}
                                   </div>
                                 </td>
@@ -1044,34 +1032,34 @@ export const PredictionsPage: React.FC = () => {
                   </div>
 
                   {/* Staffing Risk Matrix (Leave Demand vs Workload) */}
-                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4 shadow-xs">
+                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-5 space-y-3 sm:space-y-4 shadow-xs">
                     <div>
-                      <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                      <h2 className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                         <Layers size={15} className="text-indigo-500" />
                         Staffing Risk Interaction Matrix (Leave Demand vs Workload)
                       </h2>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                      <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
                         Operational synthesis modeling risk across fluctuating delivery demand and worker absenteeism
                       </p>
                     </div>
 
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs border border-slate-200 dark:border-slate-800 text-center">
+                    <div className="overflow-x-auto -mx-1 sm:mx-0">
+                      <table className="w-full text-xs border border-slate-200 dark:border-slate-800 text-center min-w-[420px]">
                         <thead>
                           <tr className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold">
-                            <th className="p-3 border border-slate-200 dark:border-slate-800 text-left">
+                            <th className="p-2.5 border border-slate-200 dark:border-slate-800 text-left">
                               Leave Demand \ Workload
                             </th>
-                            <th className="p-3 border border-slate-200 dark:border-slate-800">Low Workload</th>
-                            <th className="p-3 border border-slate-200 dark:border-slate-800">Medium Workload</th>
-                            <th className="p-3 border border-slate-200 dark:border-slate-800">High Workload</th>
+                            <th className="p-2.5 border border-slate-200 dark:border-slate-800">Low Workload</th>
+                            <th className="p-2.5 border border-slate-200 dark:border-slate-800">Medium Workload</th>
+                            <th className="p-2.5 border border-slate-200 dark:border-slate-800">High Workload</th>
                           </tr>
                         </thead>
                         <tbody>
                           {['Low', 'Medium', 'High'].map((leaveLevel) => (
                             <tr key={leaveLevel}>
-                              <td className="p-3 font-bold text-left bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
-                                {leaveLevel} Leave Demand
+                              <td className="p-2.5 font-bold text-left bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+                                {leaveLevel} Leave
                               </td>
                               {['Low', 'Medium', 'High'].map((workloadLevel) => {
                                 const cell = staffingRisk.matrix_cells?.find(
@@ -1084,7 +1072,7 @@ export const PredictionsPage: React.FC = () => {
                                 return (
                                   <td
                                     key={workloadLevel}
-                                    className={`p-3.5 border border-slate-200 dark:border-slate-800 font-semibold transition-all ${
+                                    className={`p-2.5 sm:p-3 border border-slate-200 dark:border-slate-800 font-semibold transition-all ${
                                       isActive ? 'ring-2 ring-blue-500 scale-[1.01] shadow-sm font-bold' : ''
                                     } ${
                                       isCrit
@@ -1096,10 +1084,10 @@ export const PredictionsPage: React.FC = () => {
                                         : 'bg-emerald-100/60 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400'
                                     }`}
                                   >
-                                    <div className="flex flex-col items-center gap-1">
+                                    <div className="flex flex-col items-center gap-0.5">
                                       <span>{cell?.risk || 'Balanced'}</span>
                                       {isActive && (
-                                        <span className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded-full font-bold">
+                                        <span className="text-[9px] bg-blue-600 text-white px-1.5 py-0.2 rounded-full font-bold">
                                           Current Status
                                         </span>
                                       )}
@@ -1115,8 +1103,8 @@ export const PredictionsPage: React.FC = () => {
                   </div>
 
                   {/* Disclaimer */}
-                  <div className="p-4 rounded-xl border border-blue-100 dark:border-blue-900/40 bg-blue-50/50 dark:bg-blue-950/20 flex items-start gap-3 text-xs text-slate-600 dark:text-slate-400">
-                    <Info size={16} className="text-blue-500 shrink-0 mt-0.5" />
+                  <div className="p-3.5 sm:p-4 rounded-xl border border-blue-100 dark:border-blue-900/40 bg-blue-50/50 dark:bg-blue-950/20 flex items-start gap-2.5 text-xs text-slate-600 dark:text-slate-400">
+                    <Info size={15} className="text-blue-500 shrink-0 mt-0.5" />
                     <div>
                       <span className="font-semibold text-slate-800 dark:text-slate-200">
                         Workforce Allocation Disclaimer:{' '}
@@ -1133,14 +1121,14 @@ export const PredictionsPage: React.FC = () => {
 
       {/* Employee Prediction Detail Modal */}
       {selectedEmployeeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-4 sm:p-6 space-y-4 shadow-2xl">
             <div className="flex justify-between items-start pb-3 border-b border-slate-100 dark:border-slate-800">
               <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
                   {selectedEmployeeModal.name}
                 </h3>
-                <p className="text-xs text-slate-500 font-mono">
+                <p className="text-[11px] text-slate-500 font-mono">
                   {selectedEmployeeModal.code} • {selectedEmployeeModal.role} ({selectedEmployeeModal.hub})
                 </p>
               </div>
@@ -1148,20 +1136,20 @@ export const PredictionsPage: React.FC = () => {
                 onClick={() => setSelectedEmployeeModal(null)}
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
               >
-                <XCircle size={20} />
+                <XCircle size={18} />
               </button>
             </div>
 
             {/* Probability Badge */}
-            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between">
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between">
               <div>
-                <div className="text-xs text-slate-500">Resignation Probability</div>
-                <div className="text-2xl font-bold font-mono text-slate-900 dark:text-white">
+                <div className="text-[11px] text-slate-500">Resignation Probability</div>
+                <div className="text-xl sm:text-2xl font-bold font-mono text-slate-900 dark:text-white">
                   {selectedEmployeeModal.resignation_probability_pct}%
                 </div>
               </div>
               <span
-                className={`px-3 py-1 rounded-lg text-xs font-bold ${
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
                   selectedEmployeeModal.risk_level === 'High'
                     ? 'bg-red-500 text-white'
                     : selectedEmployeeModal.risk_level === 'Medium'
@@ -1175,7 +1163,7 @@ export const PredictionsPage: React.FC = () => {
 
             {/* Contributing Factors Breakdown */}
             <div className="space-y-2">
-              <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+              <h4 className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                 Contributing Factor Decomposition
               </h4>
               <div className="space-y-2">
@@ -1184,20 +1172,20 @@ export const PredictionsPage: React.FC = () => {
                   return (
                     <div
                       key={i}
-                      className="p-3 rounded-lg border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-between items-center text-xs"
+                      className="p-2.5 sm:p-3 rounded-lg border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-between items-center text-xs"
                     >
                       <div className="flex items-center gap-2">
                         {isInc ? (
-                          <AlertTriangle size={14} className="text-red-500" />
+                          <AlertTriangle size={13} className="text-red-500 shrink-0" />
                         ) : (
-                          <CheckCircle size={14} className="text-emerald-500" />
+                          <CheckCircle size={13} className="text-emerald-500 shrink-0" />
                         )}
-                        <span className="font-semibold text-slate-800 dark:text-slate-200">
+                        <span className="font-semibold text-slate-800 dark:text-slate-200 text-[11px] sm:text-xs">
                           {factor.factor}
                         </span>
                       </div>
                       <span
-                        className={`font-mono font-bold ${
+                        className={`font-mono font-bold text-[11px] sm:text-xs shrink-0 ${
                           isInc ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'
                         }`}
                       >
