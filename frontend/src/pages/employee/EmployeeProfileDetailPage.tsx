@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Card, Button, Badge, LoadingSpinner } from '@/components/common';
+import { Skeleton, SkeletonStatCard } from '@/components/Skeleton';
 import { useToast } from '@/hooks/useToast';
 import { useAuth } from '@/hooks/useAuth';
 import { Upload, Edit2, Save, X, Clock, Send, ArrowLeft, Key, ScanLine, CreditCard, User } from 'lucide-react';
@@ -387,8 +388,22 @@ export const EmployeeProfileDetailPage = () => {
         )}
 
         {isLoading && (
-          <div className="flex justify-center items-center py-12">
-            <LoadingSpinner size="lg" />
+          <div className="space-y-6">
+            <div className="bg-white dark:bg-[#0F172A] border border-gray-200 dark:border-slate-800 rounded-xl p-6 space-y-4">
+              <div className="flex items-center gap-4">
+                <Skeleton className="w-16 h-16 rounded-full" />
+                <div className="space-y-2">
+                  <Skeleton className="w-48 h-6" />
+                  <Skeleton className="w-32 h-4" />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 border-t border-gray-100 dark:border-slate-800">
+                <Skeleton className="h-12 w-full rounded-lg" />
+                <Skeleton className="h-12 w-full rounded-lg" />
+                <Skeleton className="h-12 w-full rounded-lg" />
+              </div>
+            </div>
+            <SkeletonStatCard count={3} />
           </div>
         )}
 

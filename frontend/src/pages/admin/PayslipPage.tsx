@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
 import { Card, Badge, LoadingSpinner, EmptyState } from '@/components/common';
+import { SkeletonTable, SkeletonStatCard } from '@/components/Skeleton';
 import { Sidebar } from '@/components/Sidebar';
 import { PayslipDetailModal } from '@/components/PayslipDetailModal';
 import { useGetPayroll, useGetHubs, useGetEmployees } from '@/hooks/useQueries';
@@ -371,11 +372,9 @@ export const PayslipPage = () => {
 
   if (payrollLoading || hubsLoading || employeesLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-dark-bg">
-        <div />
-        <div className="p-4 lg:p-6 lg:ml-64 flex items-center justify-center min-h-screen">
-          <LoadingSpinner />
-        </div>
+      <div className="min-h-screen bg-gray-50 dark:bg-dark-bg p-4 lg:p-6 lg:ml-64 space-y-6">
+        <SkeletonStatCard count={4} />
+        <SkeletonTable rows={8} cols={6} />
       </div>
     );
   }

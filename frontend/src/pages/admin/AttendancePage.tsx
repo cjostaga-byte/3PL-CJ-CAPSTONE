@@ -5,6 +5,7 @@ import AdminMobileProfile from '@/components/AdminMobileProfile';
 
 
 import { Card, Badge, LoadingSpinner, EmptyState } from '@/components/common';
+import { SkeletonTable, SkeletonStatCard } from '@/components/Skeleton';
 import { useGetAttendance, useGetHubs, useGetEmployees, useApproveAttendance, useDisapproveAttendance } from '@/hooks/useQueries';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
@@ -287,8 +288,9 @@ export const AttendancePage = () => {
 
   if (attendanceLoading || hubsLoading || employeesLoading) {
     return (
-      <div className="p-4 lg:p-6 lg:ml-64 flex items-center justify-center min-h-screen">
-        <LoadingSpinner />
+      <div className="p-4 lg:p-6 lg:ml-64 min-h-screen space-y-6">
+        <SkeletonStatCard count={3} />
+        <SkeletonTable rows={8} cols={6} />
       </div>
     );
   }

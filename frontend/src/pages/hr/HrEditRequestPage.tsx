@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { editRequestAPI } from '@/api/apiService';
 import { useApproveEditRequest, useRejectEditRequest } from '@/hooks/useQueries';
 import { Card, LoadingSpinner, Button } from '@/components/common';
+import { Skeleton } from '@/components/Skeleton';
 import { Sidebar } from '@/components/Sidebar';
 import AdminMobileProfile from '@/components/AdminMobileProfile';
 
@@ -66,8 +67,10 @@ export default function HrEditRequestPage() {
 
         <Card>
           {isLoading ? (
-            <div className="p-8 flex justify-center">
-              <LoadingSpinner />
+            <div className="p-6 space-y-4">
+              <Skeleton className="h-6 w-48" />
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-32 w-full rounded-xl" />
             </div>
           ) : !data ? (
             <div className="p-6 text-gray-600 dark:text-gray-400">Request not found.</div>

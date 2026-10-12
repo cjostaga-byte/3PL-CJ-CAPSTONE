@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { authAPI, employeeAPI, hubAPI, attendanceAPI, payrollAPI, editRequestAPI, leaveRequestAPI, activityLogAPI, securityAlertAPI, documentAPI, dashboardAPI, paymentAccountAPI, liveLocationAPI } from '@/api/apiService';
+import { authAPI, employeeAPI, hubAPI, attendanceAPI, payrollAPI, editRequestAPI, leaveRequestAPI, activityLogAPI, securityAlertAPI, documentAPI, dashboardAPI, paymentAccountAPI, liveLocationAPI, predictionsAPI } from '@/api/apiService';
 import { QUERY_KEYS } from '@/constants/api';
 
 // Auth hooks
@@ -494,6 +494,43 @@ export const useUpdateLiveLocation = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.LIVE_LOCATIONS });
     },
+  });
+};
+
+// Predictive Analytics hooks
+export const useGetPredictionsOverview = (days: number = 14) => {
+  return useQuery({
+    queryKey: QUERY_KEYS.PREDICTIONS_OVERVIEW(days),
+    queryFn: () => predictionsAPI.getOverview(days),
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+};
+
+export const useGetAttritionPrediction = () => {
+  return useQuery({
+    queryKey: QUERY_KEYS.PREDICTIONS_ATTRITION,
+    queryFn: () => predictionsAPI.getAttrition(),
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+};
+
+export const useGetLeaveDemandPrediction = (days: number = 14) => {
+  return useQuery({
+    queryKey: QUERY_KEYS.PREDICTIONS_LEAVE_DEMAND(days),
+    queryFn: () => predictionsAPI.getLeaveDemand(days),
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+};
+
+export const useGetWorkforceRiskPrediction = (days: number = 14) => {
+  return useQuery({
+    queryKey: QUERY_KEYS.PREDICTIONS_WORKFORCE_RISK(days),
+    queryFn: () => predictionsAPI.getWorkforceRisk(days),
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
   });
 };
 

@@ -30,7 +30,7 @@ function resolveApiBaseUrl(): string {
   const prod = !!import.meta.env.PROD;
   if (prod) {
     // Default fallback in production if VITE_API_URL is not configured
-    return 'https://threepl-ostaga-thesis.onrender.com/api';
+    return 'https://threepl-cj-capstone.onrender.com/api';
   }
 
   return devFallback;
@@ -123,6 +123,12 @@ export const API_ENDPOINTS = {
   APPLICATIONS_LIST: '/admin/applications/',
   APPLICATION_DETAIL: (ref: string) => `/applications/${ref}/`,
   APPLICATION_ACTION: (ref: string) => `/admin/applications/${ref}/action/`,
+
+  // Predictive Analytics
+  PREDICTIONS_OVERVIEW: '/predictions/overview/',
+  PREDICTIONS_ATTRITION: '/predictions/attrition/',
+  PREDICTIONS_LEAVE_DEMAND: '/predictions/leave-demand/',
+  PREDICTIONS_WORKFORCE_RISK: '/predictions/workforce-risk/',
 } as const;
 
 export const QUERY_KEYS = {
@@ -147,5 +153,9 @@ export const QUERY_KEYS = {
   EMPLOYEES_ONLINE: ['employees-online'],
   PAYMENT_ACCOUNTS: ['payment-accounts'],
   APPLICATION_REQUESTS: ['application-requests'],
+  PREDICTIONS_OVERVIEW: (days?: number) => ['predictions-overview', days ?? 14],
+  PREDICTIONS_ATTRITION: ['predictions-attrition'],
+  PREDICTIONS_LEAVE_DEMAND: (days?: number) => ['predictions-leave-demand', days ?? 14],
+  PREDICTIONS_WORKFORCE_RISK: (days?: number) => ['predictions-workforce-risk', days ?? 14],
 } as const;
 

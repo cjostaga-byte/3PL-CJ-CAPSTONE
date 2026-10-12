@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Card, Badge, LoadingSpinner, EmptyState } from '@/components/common';
+import { SkeletonTable } from '@/components/Skeleton';
 import { Activity, Filter, Search, Clock, User, FileText, Trash2 } from 'lucide-react';
 import { useGetActivityLogs, useClearAllActivityLogs } from '@/hooks/useQueries';
 import { normalizeApiResponse } from '@/utils/apiResponseHandler';
@@ -104,8 +105,8 @@ export const ActivityLogsPage = () => {
         onToggle={() => setSidebarOpen(!sidebarOpen)}
       />
 
-      <div className="p-4 lg:p-6 lg:ml-64 flex items-center justify-center min-h-screen">
-        <LoadingSpinner />
+      <div className="p-4 lg:p-6 lg:ml-64 min-h-screen space-y-4">
+        <SkeletonTable rows={8} cols={5} />
       </div>
     </div>
   );

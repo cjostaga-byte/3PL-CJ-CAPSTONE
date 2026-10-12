@@ -458,5 +458,27 @@ export const paymentAccountAPI = {
   },
 };
 
+/* =========================
+   PREDICTIONS API
+========================= */
+export const predictionsAPI = {
+  getOverview: async (days: number = 14) => {
+    const response = await apiClient.get(API_ENDPOINTS.PREDICTIONS_OVERVIEW, { params: { days } });
+    return response.data;
+  },
+  getAttrition: async () => {
+    const response = await apiClient.get(API_ENDPOINTS.PREDICTIONS_ATTRITION);
+    return response.data;
+  },
+  getLeaveDemand: async (days: number = 14) => {
+    const response = await apiClient.get(API_ENDPOINTS.PREDICTIONS_LEAVE_DEMAND, { params: { days } });
+    return response.data;
+  },
+  getWorkforceRisk: async (days: number = 14) => {
+    const response = await apiClient.get(API_ENDPOINTS.PREDICTIONS_WORKFORCE_RISK, { params: { days } });
+    return response.data;
+  },
+};
+
 // ✅ ALSO KEEP DEFAULT EXPORT
 export default apiClient;

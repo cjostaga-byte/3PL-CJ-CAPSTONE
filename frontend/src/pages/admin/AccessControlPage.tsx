@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Card, Badge, LoadingSpinner, EmptyState } from '@/components/common';
+import { SkeletonTable } from '@/components/Skeleton';
 import { EmployeeAccessControlModal } from '@/components/EmployeeAccessControlModal';
 import { useGetEmployees, useGetActivityLogs, useGetSecurityAlerts } from '@/hooks/useQueries';
 import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -122,8 +123,8 @@ export const AccessControlPage = () => {
           <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
         </div>
 
-        <div className="p-4 lg:p-6 lg:ml-64 flex items-center justify-center min-h-screen">
-          <LoadingSpinner />
+        <div className="p-4 lg:p-6 lg:ml-64 min-h-screen space-y-4">
+          <SkeletonTable rows={8} cols={5} />
         </div>
       </div>
     );

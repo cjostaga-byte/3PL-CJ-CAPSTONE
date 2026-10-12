@@ -2,6 +2,7 @@ import { useState, useRef, useMemo } from 'react';
 import { useToast } from '@/hooks/useToast';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, Button, Badge, LoadingSpinner, EmptyState } from '@/components/common';
+import { SkeletonTable } from '@/components/Skeleton';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import {
   useGetPaymentAccounts,
@@ -262,7 +263,7 @@ export const AdminPaymentAccountsPage = () => {
           {/* Main Table Card */}
           <Card className="overflow-hidden !p-0 border border-gray-200 dark:border-gray-700 shadow-xs">
             {isLoading ? (
-              <div className="flex justify-center py-16"><LoadingSpinner size="lg" /></div>
+              <SkeletonTable rows={6} cols={5} />
             ) : accounts.length === 0 ? (
               <div className="p-8">
                 <EmptyState title="No payment accounts found" description="Add payment accounts for employees." />

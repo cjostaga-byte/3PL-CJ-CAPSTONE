@@ -51,9 +51,11 @@ SECURE_HSTS_PRELOAD = os.environ.get('SECURE_HSTS_PRELOAD', 'True' if not DEBUG 
 _ALLOWED_HOSTS_ENV = os.environ.get('ALLOWED_HOSTS', '').strip()
 ALLOWED_HOSTS = [
     ".onrender.com",
+    "threepl-cj-capstone.onrender.com",
     "three-pl-company.onrender.com",
     "threepl-backend-wf79.onrender.com",
     ".vercel.app",
+    "capstone-cj-final.vercel.app",
     "cj-3pl-ostaga.vercel.app",
     "localhost",
     "127.0.0.1",
@@ -159,6 +161,8 @@ else:
 CSRF_TRUSTED_ORIGINS = [
     "https://*.vercel.app",
     "https://*.onrender.com",
+    "https://capstone-cj-final.vercel.app",
+    "https://threepl-cj-capstone.onrender.com",
     "https://cj-3pl-ostaga.vercel.app",
     "https://threepl-backend-wf79.onrender.com",
     "https://three-pl-company.onrender.com",
@@ -248,7 +252,8 @@ CORS_ALLOWED_ORIGINS = [
     "https://3-plcjfinal-79xnpq3is-cj-g-a-js-projects.vercel.app",  # Old Vercel frontend
     "https://3-plcj-again.vercel.app",  # Old Vercel frontend
     "https://3-pl-cj.vercel.app",  # Old Vercel frontend
-    "https://cj-3pl-ostaga.vercel.app",  # ✅ Current Vercel frontend
+    "https://cj-3pl-ostaga.vercel.app",  # Old Vercel frontend
+    "https://capstone-cj-final.vercel.app",  # Current Vercel frontend
 ]
 # Production + preview deployments on Vercel (URLs change per branch)
 CORS_ALLOWED_ORIGIN_REGEXES = [

@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: 3pl-ostaga-thesis-backend
+    name: threepl-cj-capstone-backend
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate
@@ -17,9 +17,8 @@ services:
       - key: DB_SSL_REQUIRE
         value: "True"
       - key: ALLOWED_HOSTS
-        value: .onrender.com,*.vercel.app,cj-3pl-ostaga.vercel.app
+        value: .onrender.com,*.vercel.app,capstone-cj-final.vercel.app,threepl-cj-capstone.onrender.com
       - key: CSRF_TRUSTED_ORIGINS
-        value: https://*.onrender.com,https://*.vercel.app,https://cj-3pl-ostaga.vercel.app
+        value: https://*.onrender.com,https://*.vercel.app,https://capstone-cj-final.vercel.app,https://threepl-cj-capstone.onrender.com
       - key: CORS_ALLOWED_ORIGIN_REGEXES
         value: "^https://.*\\.vercel\\.app$"
-

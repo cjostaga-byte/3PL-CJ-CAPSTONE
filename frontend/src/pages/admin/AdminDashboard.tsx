@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Card, Badge, LoadingSpinner, EmptyState } from '@/components/common';
+import { SkeletonDashboard, SkeletonTable } from '@/components/Skeleton';
 import { useGetEmployees, useGetHubs } from '@/hooks/useQueries';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { useAuth } from '@/hooks/useAuth';
@@ -324,8 +325,8 @@ export const AdminDashboard = () => {
 
   if (hubsLoading && employeesLoading) {
     return (
-      <div className="p-6 lg:ml-64 flex items-center justify-center min-h-screen">
-        <LoadingSpinner />
+      <div className="p-6 lg:ml-64 min-h-screen">
+        <SkeletonDashboard />
       </div>
     );
   }
@@ -581,7 +582,7 @@ export const AdminDashboard = () => {
           </div>
 
           {employeesLoading ? (
-            <div className="flex justify-center py-10"><LoadingSpinner /></div>
+            <SkeletonTable rows={5} cols={5} />
           ) : employeesError ? (
             <EmptyState title="Could not load employees" description="Please refresh the page or try again in a moment." />
           ) : employees.length > 0 ? (

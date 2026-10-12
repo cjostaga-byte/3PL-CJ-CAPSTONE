@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, Button, Badge, LoadingSpinner, EmptyState } from './common';
+import { SkeletonTable } from './Skeleton';
 import { useGetEmployees, useDeleteEmployee, useBulkToggleLogin } from '@/hooks/useQueries';
 import { useToast } from '@/hooks/useToast';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -150,11 +151,7 @@ export const EmployeeManagePanel = (props: EmployeeManagePanelProps) => {
   };
 
   if (isLoading) {
-    return (
-      <Card className="flex items-center justify-center py-12">
-        <LoadingSpinner />
-      </Card>
-    );
+    return <SkeletonTable rows={6} cols={5} />;
   }
 
   return (

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Card, Button, Badge, LoadingSpinner } from '@/components/common';
+import { SkeletonTable } from '@/components/Skeleton';
 import { useToast } from '@/hooks/useToast';
 import { CheckCircle, XCircle, Clock, Eye, Download, X, FileText } from 'lucide-react';
 import { Sidebar } from '@/components/Sidebar';
@@ -155,13 +156,8 @@ export const LeaveRequestsPanel = ({ initialFilter = 'pending' }: { initialFilte
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-dark-bg">
         <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
-        <div className="p-4 lg:p-6 lg:ml-64">
-          <Card>
-            <div className="text-center py-8 flex items-center justify-center gap-3">
-              <LoadingSpinner />
-              <span className="text-gray-500 dark:text-gray-400">Loading leave requests...</span>
-            </div>
-          </Card>
+        <div className="p-4 lg:p-6 lg:ml-64 space-y-4">
+          <SkeletonTable rows={6} cols={5} />
         </div>
       </div>
     );

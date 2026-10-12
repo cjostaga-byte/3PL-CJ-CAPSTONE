@@ -7,6 +7,7 @@ import { employeeAPI } from '@/api/apiService';
 
 // Components
 import { Layout, LoadingSpinner } from '@/components/common';
+import { SkeletonDashboard } from '@/components/Skeleton';
 import { ThemeProvider } from '@/context/ThemeContext';
 import BottomNavigation from '@/components/BottomNavigation';
 import { LiveLocationTracker } from '@/components/LiveLocationTracker';
@@ -122,7 +123,7 @@ function AppRoutes() {
   const { isAuthenticated } = useAuth();
 
   return (
-    <Suspense fallback={<div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900"><LoadingSpinner /></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6"><SkeletonDashboard /></div>}>
     <Routes>
       {/* Auth Routes */}
       <Route

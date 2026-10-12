@@ -24,6 +24,7 @@ import {
   History,
 } from 'lucide-react';
 import { LoadingSpinner, Badge } from '@/components/common';
+import { SkeletonTable } from '@/components/Skeleton';
 import { Sidebar } from '@/components/Sidebar';
 import AdminMobileProfile from '@/components/AdminMobileProfile';
 import { apiUrl } from '@/constants/api';
@@ -578,9 +579,7 @@ export const ApplicationRequestsPanel = () => {
 
         {/* Table */}
         {loading ? (
-          <div className="flex justify-center py-20">
-            <LoadingSpinner />
-          </div>
+          <SkeletonTable rows={5} cols={5} />
         ) : applications.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-600">
             <FileText size={48} className="mb-3 opacity-40" />

@@ -15,6 +15,7 @@ import EmployeeAttendanceAnalytics from '@/components/EmployeeAttendanceAnalytic
 import { AttendanceHistoryScreen } from './AttendanceHistoryScreen';
 import { apiClient } from '@/api/apiService';
 import { LoadingSpinner } from '@/components/common';
+import { Skeleton } from '@/components/Skeleton';
 
 import { normalizeApiResponse } from '@/utils/apiResponseHandler';
 import {
@@ -900,8 +901,19 @@ export const EmployeeDashboard = () => {
 
             {/* Leave list */}
             {leaveLoading ? (
-              <div className="flex items-center justify-center py-16 rounded-2xl bg-white dark:bg-[#0F172A] border border-gray-200 dark:border-gray-800">
-                <LoadingSpinner />
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="p-4 rounded-2xl bg-white dark:bg-[#0f1a2e]/80 border border-gray-200/80 dark:border-slate-700/50 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Skeleton className="w-9 h-9 rounded-xl" />
+                      <div className="space-y-2">
+                        <Skeleton className="w-24 h-4" />
+                        <Skeleton className="w-36 h-3" />
+                      </div>
+                    </div>
+                    <Skeleton className="w-16 h-6 rounded-full" />
+                  </div>
+                ))}
               </div>
             ) : leaveItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center rounded-2xl bg-white dark:bg-[#0F172A] border border-gray-200 dark:border-gray-800">

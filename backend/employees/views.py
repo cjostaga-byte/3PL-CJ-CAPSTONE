@@ -3882,3 +3882,77 @@ class PaymentAccountViewSet(viewsets.ModelViewSet):
             obj.qr_code = None
             obj.save()
         return Response({'status': 'QR code removed'})
+
+
+# =============================================================================
+# ADVANCED PREDICTIVE ANALYTICS API VIEWS
+# =============================================================================
+
+class AttritionPredictionView(APIView):
+    """
+    GET /api/predictions/attrition/
+    Returns multi-variable ML employee attrition risk predictions,
+    model evaluations, and feature explainability.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .ml.attrition_model import train_and_evaluate_attrition_models
+        data = train_and_evaluate_attrition_models()
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class LeaveDemandPredictionView(APIView):
+    """
+    GET /api/predictions/leave-demand/?days=14
+    Returns multi-factor future leave demand forecast with 95% confidence intervals,
+    by-hub and by-role breakdowns.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .ml.leave_demand_model import forecast_future_leave_demand
+        days = int(request.query_params.get('days', 14))
+        data = forecast_future_leave_demand(days_ahead=days)
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class WorkforceStaffingRiskView(APIView):
+    """
+    GET /api/predictions/workforce-risk/?days=14
+    Synthesizes Attrition + Leave Demand + Workload into Quantitative
+    Available Workforce and Staffing Gaps by Hub.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .ml.workforce_risk_model import evaluate_workforce_staffing_risk
+        days = int(request.query_params.get('days', 14))
+        data = evaluate_workforce_staffing_risk(horizon_days=days)
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class PredictionsOverviewView(APIView):
+    """
+    GET /api/predictions/overview/
+    Unified endpoint returning complete predictive intelligence suite.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .ml.attrition_model import train_and_evaluate_attrition_models
+        from .ml.leave_demand_model import forecast_future_leave_demand
+        from .ml.workforce_risk_model import evaluate_workforce_staffing_risk
+
+        days = int(request.query_params.get('days', 14))
+        attrition = train_and_evaluate_attrition_models()
+        leave = forecast_future_leave_demand(days_ahead=days)
+        risk = evaluate_workforce_staffing_risk(horizon_days=days)
+
+        return Response({
+            'attrition': attrition,
+            'leave_demand': leave,
+            'staffing_risk': risk,
+            'generated_at': timezone.now().isoformat(),
+        }, status=status.HTTP_200_OK)
+

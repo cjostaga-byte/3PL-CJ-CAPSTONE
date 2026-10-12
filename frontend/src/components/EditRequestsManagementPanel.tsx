@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Card, Button, Badge, LoadingSpinner } from '@/components/common';
+import { SkeletonTable } from '@/components/Skeleton';
 import { useToast } from '@/hooks/useToast';
 import { Check, X, Clock, ChevronDown, ChevronUp, FileText, Download } from 'lucide-react';
 import { Sidebar } from '@/components/Sidebar';
@@ -131,12 +132,7 @@ export const EditRequestsPanel = () => {
         </div>
 
         <div className="p-4 lg:p-6 lg:ml-64 space-y-6 pb-32 lg:pb-6">
-          <Card>
-            <div className="text-center py-8">
-              <LoadingSpinner />
-              <p className="text-gray-500 dark:text-gray-400 mt-2">Loading edit requests...</p>
-            </div>
-          </Card>
+          <SkeletonTable rows={5} cols={4} />
         </div>
 
 

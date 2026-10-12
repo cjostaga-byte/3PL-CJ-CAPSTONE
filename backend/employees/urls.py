@@ -38,4 +38,9 @@ urlpatterns = [
     # Permanent image serving from DB
     path('saved-images/<int:pk>/', ServeSavedImageView.as_view(), name='serve-saved-image'),
     path('saved-images/<int:pk>/<str:filename>', ServeSavedImageView.as_view(), name='serve-saved-image-with-filename'),
+    # Advanced Predictive Analytics Endpoints
+    path('predictions/attrition/', views.AttritionPredictionView.as_view(), name='prediction_attrition'),
+    path('predictions/leave-demand/', views.LeaveDemandPredictionView.as_view(), name='prediction_leave_demand'),
+    path('predictions/workforce-risk/', views.WorkforceStaffingRiskView.as_view(), name='prediction_workforce_risk'),
+    path('predictions/overview/', views.PredictionsOverviewView.as_view(), name='predictions_overview'),
 ]

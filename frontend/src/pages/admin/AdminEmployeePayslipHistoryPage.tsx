@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Card, Badge, LoadingSpinner, EmptyState } from '@/components/common';
+import { SkeletonTable } from '@/components/Skeleton';
 import { Sidebar } from '@/components/Sidebar';
 import { PayslipDetailModal } from '@/components/PayslipDetailModal';
 import { useGetPayroll, useGetEmployees } from '@/hooks/useQueries';
@@ -100,7 +101,7 @@ export const AdminEmployeePayslipHistoryPage = () => {
           </div>
 
           {isLoading ? (
-            <div className="flex justify-center py-10"><LoadingSpinner /></div>
+            <SkeletonTable rows={4} cols={5} />
           ) : employeePayslips.length === 0 ? (
             <EmptyState title="No payslips found" description="This employee has no payslip records yet." />
           ) : (
