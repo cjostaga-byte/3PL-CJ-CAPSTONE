@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.authtoken.models import Token
+from rest_framework.pagination import PageNumberPagination
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
@@ -17,6 +18,24 @@ from django.http import HttpResponse, Http404
 import os
 import json
 from .models import Hub, Employee, EditRequest, LeaveRequest, Attendance, LiveLocation, Payroll, EmployeeDocument, ActivityLog, SecurityAlert, HRPermission, SavedImage, PaymentAccount
+
+
+# ── Custom Pagination Classes ──────────────────────────────────────────────────
+
+class StandardResultsSetPagination(PageNumberPagination):
+    """50 items per page — for Attendance records and similar mid-size datasets."""
+    page_size = 50
+    page_size_query_param = 'page_size'
+    max_page_size = 200
+
+
+class LargeResultsSetPagination(PageNumberPagination):
+    """100 items per page — for Activity Logs and Security Alerts."""
+    page_size = 100
+    page_size_query_param = 'page_size'
+    max_page_size = 500
+
+
 
 def apply_hr_hub_filter(queryset, user, hub_field='hub'):
     """Filter queryset by managed hubs if user is HR."""
@@ -104,6 +123,27 @@ class HubViewSet(viewsets.ModelViewSet):
         qs = Hub.objects.annotate(_employee_count=Count('employees')).order_by('name')
         return apply_hr_hub_filter(qs, self.request.user, hub_field='id')
 
+# Module-level cache for philippine_locations.json — loaded once per process, never reloaded.
+# This avoids reading + JSON-parsing a large file on every MetaView request.
+_PHILIPPINE_LOCATIONS_CACHE = None
+
+def _load_philippine_locations():
+    """Load the philippine_locations.json file once and cache it in memory."""
+    global _PHILIPPINE_LOCATIONS_CACHE
+    if _PHILIPPINE_LOCATIONS_CACHE is not None:
+        return _PHILIPPINE_LOCATIONS_CACHE
+    try:
+        locations_path = os.path.join(settings.BASE_DIR, 'philippine_locations.json')
+        if os.path.exists(locations_path):
+            with open(locations_path, 'r', encoding='utf-8') as f:
+                _PHILIPPINE_LOCATIONS_CACHE = json.load(f)
+        else:
+            _PHILIPPINE_LOCATIONS_CACHE = {}
+    except Exception:
+        _PHILIPPINE_LOCATIONS_CACHE = {}
+    return _PHILIPPINE_LOCATIONS_CACHE
+
+
 class MetaView(APIView):
     """Meta endpoint for frontend form option data."""
     permission_classes = [IsAuthenticated]
@@ -119,33 +159,19 @@ class MetaView(APIView):
                 many=True,
                 context={'request': request}
             ).data,
+            # Use cached locations — avoids disk I/O on every request
+            'locations': _load_philippine_locations(),
         }
-
-        # Attempt to load a philippine locations JSON file from project root.
-        # File path: <BASE_DIR>/philippine_locations.json
-        try:
-            locations_path = os.path.join(settings.BASE_DIR, 'philippine_locations.json')
-            if os.path.exists(locations_path):
-                with open(locations_path, 'r', encoding='utf-8') as f:
-                    try:
-                        loc_data = json.load(f)
-                        meta_data['locations'] = loc_data
-                    except Exception:
-                        meta_data['locations'] = {}
-            else:
-                meta_data['locations'] = {}
-        except Exception:
-            meta_data['locations'] = {}
 
         if key:
             if key not in meta_data:
                 return Response({'detail': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
             if key == 'positions' and not meta_data['positions']:
-                meta_data['positions'] = ['Sorter', 'Admin', 'HR', 'Rider' ,'Courier']
+                meta_data['positions'] = ['Sorter', 'Admin', 'HR', 'Rider', 'Courier']
             return Response(meta_data[key])
 
         if not meta_data['positions']:
-            meta_data['positions'] = ['Sorter', 'Admin', 'HR', 'Rider' ,'Courier']
+            meta_data['positions'] = ['Sorter', 'Admin', 'HR', 'Rider', 'Courier']
         return Response(meta_data)
 
 class EmployeeViewSet(viewsets.ModelViewSet):
@@ -1033,7 +1059,14 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def hub_summary(self, request):
-        """Attendance counts by hub for charting (read-only; does not mutate rows)."""
+        """Attendance counts by hub for charting (read-only; does not mutate rows).
+
+        Optimized: uses 2 aggregate GROUP BY queries instead of N+1 per-employee queries.
+        With 1000+ employees this reduces DB round-trips from 1000+ to 2.
+        """
+        from collections import defaultdict
+        from django.db.models import Q, Count
+
         date_str = request.query_params.get('date')
         target_date = timezone.localdate()
         if date_str:
@@ -1043,35 +1076,53 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             except Exception:
                 target_date = timezone.localdate()
 
-        hub_stats = {}
-        employees = Employee.objects.filter(status='Active').select_related('hub')
-        for emp in employees:
-            hub_name = emp.hub.name if emp.hub else 'Unknown'
-            if hub_name not in hub_stats:
-                hub_stats[hub_name] = {'present': 0, 'absent': 0, 'late': 0}
+        # Build hub-name -> employee-count map from active employees
+        hub_emp_counts = dict(
+            Employee.objects.filter(status='Active', hub__isnull=False)
+            .values('hub__name')
+            .annotate(cnt=Count('id'))
+            .values_list('hub__name', 'cnt')
+        )
+        # Also count employees with no hub
+        no_hub_count = Employee.objects.filter(status='Active', hub__isnull=True).count()
+        if no_hub_count:
+            hub_emp_counts['Unknown'] = no_hub_count
 
-            att = (
-                Attendance.objects.filter(employee=emp, date=target_date)
-                .order_by('-id')
-                .first()
+        # Single query: attendance records for target_date grouped by hub
+        att_by_hub = (
+            Attendance.objects.filter(
+                date=target_date,
+                clock_in_time__isnull=False,
+                employee__status='Active',
             )
-            if att and att.clock_in_time:
-                if att.clock_in_time.hour >= 10:
-                    hub_stats[hub_name]['late'] += 1
-                else:
-                    hub_stats[hub_name]['present'] += 1
-            else:
-                hub_stats[hub_name]['absent'] += 1
-
-        result = [
-            {
-                'hub_name': hub_name,
-                'present': stats['present'],
-                'absent': stats['absent'],
-                'late': stats['late'],
+            .values('employee__hub__name')
+            .annotate(
+                present_count=Count('id', filter=Q(clock_in_time__hour__lt=10)),
+                late_count=Count('id', filter=Q(clock_in_time__hour__gte=10)),
+            )
+        )
+        att_dict = {}
+        for row in att_by_hub:
+            hub_name = row['employee__hub__name'] or 'Unknown'
+            att_dict[hub_name] = {
+                'present': row['present_count'],
+                'late': row['late_count'],
             }
-            for hub_name, stats in hub_stats.items()
-        ]
+
+        result = []
+        for hub_name, total_emp in hub_emp_counts.items():
+            att = att_dict.get(hub_name, {'present': 0, 'late': 0})
+            present = att['present']
+            late = att['late']
+            absent = max(0, total_emp - present - late)
+            result.append({
+                'hub_name': hub_name,
+                'present': present,
+                'absent': absent,
+                'late': late,
+            })
+
+        result.sort(key=lambda x: x['present'] + x['late'], reverse=True)
         return Response(result)
 
     @action(detail=False, methods=['get'])
@@ -2907,6 +2958,7 @@ class ActivityLogViewSet(viewsets.ModelViewSet):
     queryset = ActivityLog.objects.all()
     serializer_class = ActivityLogSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = LargeResultsSetPagination  # paginate — prevents returning thousands of rows
     
     def get_queryset(self):
         queryset = ActivityLog.objects.all().select_related('employee', 'user').order_by('-created_at')
@@ -2977,6 +3029,7 @@ class SecurityAlertViewSet(viewsets.ModelViewSet):
     queryset = SecurityAlert.objects.all()
     serializer_class = SecurityAlertSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = LargeResultsSetPagination  # paginate — prevents returning thousands of rows
     
     def get_queryset(self):
         queryset = SecurityAlert.objects.all().select_related('employee', 'resolved_by').order_by('-created_at')

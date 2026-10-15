@@ -150,6 +150,24 @@ class Employee(models.Model):
     def __str__(self):
         return f"{self.full_name} - {self.position}"
 
+    class Meta:
+        indexes = [
+            # Most common filter: status (Active/Resign/AWOL/Blacklist)
+            models.Index(fields=['status'], name='employee_status_idx'),
+            # Role-based filtering: HR, Admin, Employee
+            models.Index(fields=['role'], name='employee_role_idx'),
+            # Hub-based filtering (used in almost all HR views)
+            models.Index(fields=['hub'], name='employee_hub_idx'),
+            # Combined: status + hub (used in DashboardAnalyticsView, hub_summary)
+            models.Index(fields=['status', 'hub'], name='employee_status_hub_idx'),
+            # Combined: role + hub (used in HR permission scoping)
+            models.Index(fields=['role', 'hub'], name='employee_role_hub_idx'),
+            # is_active for middleware / login checks
+            models.Index(fields=['is_active'], name='employee_is_active_idx'),
+            # Heartbeat / online presence
+            models.Index(fields=['last_activity'], name='employee_last_activity_idx'),
+        ]
+
 
 # ===================== HR PERMISSIONS =====================
 
@@ -292,6 +310,15 @@ class Attendance(models.Model):
     class Meta:
         unique_together = ['employee', 'date']
         ordering = ['-date']
+        indexes = [
+            # Date-range scans (hub_summary, aggregate, dashboard trend)
+            models.Index(fields=['date'], name='attendance_date_idx'),
+            # employee + date lookup (clock_in/out, per-employee history)
+            models.Index(fields=['employee', 'date'], name='attendance_emp_date_idx'),
+            # clock_in_time (hour >= 10 late filter in dashboard)
+            models.Index(fields=['clock_in_time'], name='attendance_clock_in_idx'),
+        ]
+
 
     def __str__(self):
         return f"{self.employee.full_name} - {self.date}"

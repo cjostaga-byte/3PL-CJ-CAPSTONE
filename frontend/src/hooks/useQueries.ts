@@ -310,6 +310,7 @@ export const useGetActivityLogs = (params?: Record<string, any>) => {
     queryFn: () => activityLogAPI.getActivityLogs(params),
     staleTime: 30 * 1000,
     refetchInterval: 30 * 1000, // Reduced from 5s → 30s to prevent server overload
+    gcTime: 2 * 60 * 1000, // keep in memory for 2 mins after unmount
   });
 };
 
@@ -330,6 +331,7 @@ export const useGetSecurityAlerts = (params?: Record<string, any>) => {
     queryFn: () => securityAlertAPI.getSecurityAlerts(params),
     staleTime: 30 * 1000,
     refetchInterval: 30 * 1000, // Reduced from 5s → 30s to prevent server overload
+    gcTime: 2 * 60 * 1000, // keep in memory for 2 mins after unmount
   });
 };
 
@@ -390,6 +392,7 @@ export const useGetDashboardAnalytics = (params?: Record<string, any>) => {
     queryFn: () => dashboardAPI.getAnalytics(params),
     staleTime: 60 * 1000,
     refetchInterval: 60 * 1000,
+    gcTime: 5 * 60 * 1000, // keep in memory for 5 mins after unmount
   });
 };
 
@@ -398,8 +401,9 @@ export const useGetOnlineEmployees = (params?: Record<string, any>) => {
   return useQuery({
     queryKey: [QUERY_KEYS.EMPLOYEES_ONLINE, params],
     queryFn: () => employeeAPI.getOnlineEmployees(params),
-    staleTime: 15 * 1000,
-    refetchInterval: 15 * 1000,
+    staleTime: 30 * 1000,   // was 15s — reduced polling frequency with large dataset
+    refetchInterval: 30 * 1000,
+    gcTime: 60 * 1000,
   });
 };
 
@@ -481,8 +485,9 @@ export const useGetLiveLocations = () => {
   return useQuery({
     queryKey: QUERY_KEYS.LIVE_LOCATIONS,
     queryFn: () => liveLocationAPI.getAll(),
-    refetchInterval: 10000, // auto-refresh every 10 seconds
-    staleTime: 5000,
+    refetchInterval: 30000, // auto-refresh every 30 seconds (was 10s — reduced to cut server load with 1000+ employees)
+    staleTime: 15000,
+    gcTime: 60000, // keep cached for 60s after unmount
   });
 };
 

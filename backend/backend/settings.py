@@ -227,6 +227,10 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',  # ✅ ADD THIS HERE
     ],
+    # Global pagination — large datasets (activity logs, security alerts, attendance)
+    # return paginated responses. ViewSets can set pagination_class=None to opt-out.
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 50,
 }
 
 # Simple JWT settings — increase access token lifetime to 30 minutes to reduce
