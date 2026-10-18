@@ -220,7 +220,7 @@ function AppRoutes() {
   );
 }
 
-// Heartbeat pinger: mark authenticated users as active every 15s
+// Heartbeat pinger: mark authenticated users as active every 45s (5-min server window)
 function Heartbeat() {
   const { isAuthenticated } = useAuth();
 
@@ -228,6 +228,7 @@ function Heartbeat() {
     if (!isAuthenticated) return;
 
     const send = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       try {
         await employeeAPI.heartbeat();
       } catch (e) {
@@ -236,8 +237,15 @@ function Heartbeat() {
     };
 
     send();
-    const id = setInterval(send, 15000);
-    return () => clearInterval(id);
+    const id = setInterval(send, 45000);
+    const onVisibilityChange = () => {
+      if (!document.hidden) send();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [isAuthenticated]);
 
   return null;

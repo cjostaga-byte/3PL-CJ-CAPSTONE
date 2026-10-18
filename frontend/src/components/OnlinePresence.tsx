@@ -5,10 +5,12 @@ import { Card } from './common';
 const OnlinePresence: React.FC = () => {
   const [online, setOnline] = useState<any[]>([]);
   const [pulseIds, setPulseIds] = useState<Set<number>>(new Set());
-  const intervalMs = 5000; // fixed 5s refresh
+  const intervalMs = 25000; // optimized 25s refresh (down from 5s to relieve server load)
   const prevIdsRef = React.useRef<Set<number>>(new Set());
 
   const fetchOnline = async () => {
+    // Skip polling if the browser tab is hidden/minimized
+    if (typeof document !== 'undefined' && document.hidden) return;
     try {
       const res = await employeeAPI.getOnlineEmployees();
       const list = res?.employees || [];
@@ -43,7 +45,14 @@ const OnlinePresence: React.FC = () => {
   useEffect(() => {
     fetchOnline();
     const id = setInterval(fetchOnline, intervalMs);
-    return () => clearInterval(id);
+    const onVisibilityChange = () => {
+      if (!document.hidden) fetchOnline();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [intervalMs]);
 
   if (!online.length) return null;

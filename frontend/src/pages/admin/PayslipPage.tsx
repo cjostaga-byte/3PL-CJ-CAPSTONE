@@ -110,9 +110,6 @@ export const PayslipPage = () => {
   const { data: hubsData, isLoading: hubsLoading } = useGetHubs();
   // Only fetch employees if we have payroll data (for display purposes)
   const { data: employeesData, isLoading: employeesLoading } = useGetEmployees();
-  // Fetch all payroll records as well for history view (unfiltered)
-  const { data: allPayrollData } = useGetPayroll();
-  
 
   const payrollRaw = normalizeApiResponse(payrollData) || [];
   const hubs = normalizeApiResponse(hubsData) || [];
@@ -160,21 +157,8 @@ export const PayslipPage = () => {
     return filtered;
   }, [payrollRaw, excludedIds, isHR, managedHubIds, allEmployees]);
 
-  const allPayroll = useMemo(() => {
-    let filtered = (normalizeApiResponse(allPayrollData) || []).filter((p: any) => {
-      const empId = p.employee ? (typeof p.employee === 'object' ? String(p.employee?.id) : String(p.employee)) : String(p.employee_id || '');
-      return !excludedIds.has(empId);
-    });
-    if (isHR && managedHubIds) {
-      filtered = filtered.filter((p: any) => {
-        const empId = p.employee ? (typeof p.employee === 'object' ? p.employee?.id : p.employee) : p.employee_id;
-        const emp = allEmployees.find((e: any) => String(e.id) === String(empId));
-        const hubId = emp ? (typeof emp.hub === 'object' ? emp.hub?.id : emp.hub) : null;
-        return managedHubIds.includes(hubId);
-      });
-    }
-    return filtered;
-  }, [allPayrollData, excludedIds, isHR, managedHubIds, allEmployees]);
+  // Re-use current payroll for modal history — avoids duplicate unpaginated network requests
+  const allPayroll = payroll;
 
   // Calculate stats
   const stats = useMemo(() => {

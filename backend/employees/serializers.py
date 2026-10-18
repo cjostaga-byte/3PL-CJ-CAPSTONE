@@ -183,7 +183,7 @@ class AttendanceSerializer(serializers.ModelSerializer):
 
     def get_clock_in_image(self, obj):
         saved = self._get_saved_image(obj, 'clock_in')
-        if saved and saved.image_data:
+        if saved:
             return absolute_media_url(
                 self.context.get('request'),
                 f"/api/saved-images/{saved.id}/"
@@ -199,7 +199,7 @@ class AttendanceSerializer(serializers.ModelSerializer):
 
     def get_clock_out_image(self, obj):
         saved = self._get_saved_image(obj, 'clock_out')
-        if saved and saved.image_data:
+        if saved:
             return absolute_media_url(
                 self.context.get('request'),
                 f"/api/saved-images/{saved.id}/"
@@ -739,19 +739,24 @@ class PayrollSerializer(serializers.ModelSerializer):
     def get_profile_image(self, obj):
         if not getattr(obj, 'employee', None):
             return None
+        if hasattr(obj.employee, '_cached_profile_img_url'):
+            return obj.employee._cached_profile_img_url
+        url = None
         prefetched = getattr(obj.employee, '_prefetched_objects_cache', {}).get('saved_images')
         if prefetched is not None:
             for s in prefetched:
                 if s.image_type == 'profile':
-                    return absolute_media_url(self.context.get('request'), f"/api/saved-images/{s.id}/")
+                    url = absolute_media_url(self.context.get('request'), f"/api/saved-images/{s.id}/")
+                    break
         else:
             from .models import SavedImage
             saved = obj.employee.saved_images.only('id', 'image_type', 'employee_id').filter(image_type='profile').order_by('-id').first()
             if saved:
-                return absolute_media_url(self.context.get('request'), f"/api/saved-images/{saved.id}/")
-        if obj.employee.profile_image:
-            return absolute_media_url(self.context.get('request'), obj.employee.profile_image.url)
-        return None
+                url = absolute_media_url(self.context.get('request'), f"/api/saved-images/{saved.id}/")
+        if not url and obj.employee.profile_image:
+            url = absolute_media_url(self.context.get('request'), obj.employee.profile_image.url)
+        obj.employee._cached_profile_img_url = url
+        return url
 
     def get_profile_image_url(self, obj):
         return self.get_profile_image(obj)
@@ -920,6 +925,9 @@ class PayrollSerializer(serializers.ModelSerializer):
     def get_payslip_image_url(self, obj):
         if not getattr(obj, 'employee', None):
             return None
+        # In-memory placeholders have no saved payslip records
+        if getattr(obj, 'id', None) is None:
+            return None
         prefetched = getattr(obj.employee, '_prefetched_objects_cache', {}).get('saved_images')
         if prefetched is not None:
             p_str = str(obj.period_start) if obj.period_start else ''
@@ -954,17 +962,10 @@ class PayrollSerializer(serializers.ModelSerializer):
         stored_ot = getattr(obj, 'overtime_hours', None)
         stored_late = getattr(obj, 'lates', None)
         stored_absent = getattr(obj, 'absences', None)
-        if stored_total is not None and float(stored_total) > 0:
-            summary = {
-                'total_hours': float(stored_total),
-                'overtime_hours': float(stored_ot or 0),
-                'lates': int(stored_late or 0),
-                'absences': int(stored_absent or 0),
-            }
-            obj._cached_summary = summary
-            return summary
 
-        if not getattr(obj, 'period_end', None):
+        # Optimization: use precomputed summary if total_hours is set (including 0.0)
+        # or if this is a placeholder without a persisted ID
+        if stored_total is not None or getattr(obj, 'id', None) is None or not getattr(obj, 'period_end', None):
             summary = {
                 'total_hours': float(stored_total or 0),
                 'overtime_hours': float(stored_ot or 0),

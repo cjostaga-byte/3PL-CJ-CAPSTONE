@@ -527,11 +527,13 @@ def online_employees(request):
     online_ids = _get_online_employee_ids(window_minutes=window_minutes)
 
     employees = apply_hr_hub_filter(
-        Employee.objects.filter(id__in=online_ids),
+        Employee.objects.filter(id__in=online_ids).select_related('hub').prefetch_related(
+            Prefetch('saved_images', queryset=SavedImage.objects.filter(image_type='profile').only('id', 'image_type', 'employee_id'))
+        ),
         request.user,
         hub_field='hub',
     )
-    serializer = EmployeeSerializer(employees, many=True, context={'request': request})
+    serializer = EmployeeListSerializer(employees, many=True, context={'request': request})
 
     return Response({'count': employees.count(), 'employees': serializer.data, 'ids': list(online_ids)})
 
@@ -2603,7 +2605,9 @@ class LoginView(APIView):
 
         if user and user.is_active:
             try:
-                employee = Employee.objects.get(user=user)
+                employee = Employee.objects.select_related('hub', 'user', 'hr_permissions').prefetch_related(
+                    Prefetch('saved_images', queryset=SavedImage.objects.filter(image_type='profile').only('id', 'image_type', 'employee_id'))
+                ).get(user=user)
                 role = employee.role
                 # Check can_login restriction
                 if not employee.can_login:
