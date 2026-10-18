@@ -55,8 +55,10 @@ def forecast_future_leave_demand(days_ahead: int = 14) -> Dict[str, Any]:
     forecast_end = today + timedelta(days=days_ahead)
 
     # 1. Fetch current active workforce
-    active_employees = Employee.objects.filter(status='Active').select_related('hub')
-    total_active = active_employees.count() or 16
+    active_employees = list(Employee.objects.filter(status='Active').only(
+        'id', 'position', 'employment_type', 'hub_id'
+    ))
+    total_active = len(active_employees) or 16
 
     # Role breakdown
     riders_count = sum(1 for e in active_employees if 'rider' in (e.position or '').lower() or 'driver' in (e.position or '').lower())
@@ -68,13 +70,18 @@ def forecast_future_leave_demand(days_ahead: int = 14) -> Dict[str, Any]:
     ocw_count = total_active - full_time_count
 
     # Hub breakdown
-    hubs = Hub.objects.all()
-    hub_names = [h.name for h in hubs] if hubs.exists() else ['Lucena Hub', 'Tayabas Hub', 'Quezon Hub']
+    hubs = list(Hub.objects.only('id', 'name').all())
+    hub_names = [h.name for h in hubs] if hubs else ['Lucena Hub', 'Tayabas Hub', 'Quezon Hub']
+
+    # Pre-aggregate hub staff counts in memory to eliminate N+1 queries
+    hub_staff_counts: Dict[int, int] = {}
+    for e in active_employees:
+        if e.hub_id:
+            hub_staff_counts[e.hub_id] = hub_staff_counts.get(e.hub_id, 0) + 1
 
     # 2. Historical leave request patterns (velocity from past 90 days)
     ninety_days_ago = today - timedelta(days=90)
-    historical_leaves = LeaveRequest.objects.filter(start_date__gte=ninety_days_ago)
-    total_recent_leaves = historical_leaves.count()
+    total_recent_leaves = LeaveRequest.objects.filter(start_date__gte=ninety_days_ago).count()
     daily_base_leave_rate = max(0.12, (total_recent_leaves / 90.0) if total_recent_leaves > 0 else 0.25)
 
     # 3. Simulate operational daily features across the future forecast horizon
@@ -133,7 +140,7 @@ def forecast_future_leave_demand(days_ahead: int = 14) -> Dict[str, Any]:
     # Leave Demand by Hub (proportional to hub active headcount)
     hub_leave_demand = []
     for hub in hubs:
-        hub_staff = active_employees.filter(hub=hub).count()
+        hub_staff = hub_staff_counts.get(hub.id, 0)
         share = hub_staff / max(1, total_active)
         hub_pred = max(1, int(round(total_predicted * share)))
         hub_leave_demand.append({

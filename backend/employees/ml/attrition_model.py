@@ -70,14 +70,17 @@ def extract_employee_features() -> pd.DataFrame:
     Extract multi-variable workforce features from the actual database.
     Combines personal demographics, attendance history, payroll metrics, and leave activity.
     """
-    employees = Employee.objects.select_related('hub').all()
+    employees = Employee.objects.select_related('hub').only(
+        'id', 'employee_id', 'firstname', 'lastname', 'position', 'status',
+        'date_of_birth', 'hired_date', 'employment_type', 'hub__name'
+    ).all()
     today = timezone.now().date()
     sixty_days_ago = today - timedelta(days=60)
 
-    # Pre-fetch aggregate stats for speed
-    all_attendance = Attendance.objects.all()
-    all_payroll = Payroll.objects.all()
-    all_leaves = LeaveRequest.objects.all()
+    # Pre-fetch aggregate stats for speed without loading binary image BLOBs
+    all_attendance = Attendance.objects.defer('image_data').only('id', 'employee_id', 'status').all()
+    all_payroll = Payroll.objects.only('id', 'employee_id', 'period_end', 'basic_salary', 'overtime_hours').all()
+    all_leaves = LeaveRequest.objects.only('id', 'employee_id', 'start_date').all()
 
     attendance_by_emp: Dict[int, List[Attendance]] = {}
     for a in all_attendance:
@@ -108,8 +111,8 @@ def extract_employee_features() -> pd.DataFrame:
         # Attendance Metrics
         total_att = len(emp_att)
         if total_att > 0:
-            present_count = sum(1 for a in emp_att if a.status.lower() == 'present')
-            late_count = sum(1 for a in emp_att if getattr(a, 'is_late', False) or 'late' in (a.status or '').lower())
+            present_count = sum(1 for a in emp_att if a.status and a.status.lower() == 'present')
+            late_count = sum(1 for a in emp_att if 'late' in (a.status or '').lower())
             absent_count = sum(1 for a in emp_att if 'absent' in (a.status or '').lower())
             attendance_rate = round(present_count / max(1, total_att), 3)
         else:
@@ -236,10 +239,10 @@ def train_and_evaluate_attrition_models() -> Dict[str, Any]:
     train_X_scaled = scaler.fit_transform(train_X)
     X_scaled = scaler.transform(X)
 
-    # Train 3 models
-    lr = LogisticRegression(max_iter=1000, random_state=42)
-    rf = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42)
-    gb = GradientBoostingClassifier(n_estimators=80, max_depth=3, learning_rate=0.08, random_state=42)
+    # Train 3 models with efficient estimator sizing for rapid response
+    lr = LogisticRegression(max_iter=500, random_state=42)
+    rf = RandomForestClassifier(n_estimators=30, max_depth=5, random_state=42, n_jobs=-1)
+    gb = GradientBoostingClassifier(n_estimators=25, max_depth=3, learning_rate=0.1, random_state=42)
 
     lr.fit(train_X_scaled, train_y)
     rf.fit(train_X_scaled, train_y)
@@ -302,8 +305,14 @@ def train_and_evaluate_attrition_models() -> Dict[str, Any]:
     # Predict for each real employee in database
     predictions = best_model.predict_proba(X_scaled)[:, 1]
 
+    # Precalculate column statistics once outside the iteration loop for O(1) lookups
+    mean_ot = float(df['overtime_hours'].mean() if not df['overtime_hours'].empty else 15.0)
+    mean_att = float(df['attendance_rate'].mean() if not df['attendance_rate'].empty else 0.90)
+    mean_tenure = float(df['tenure_years'].mean() if not df['tenure_years'].empty else 2.0)
+    mean_abs = float(df['absence_frequency'].mean() if not df['absence_frequency'].empty else 1.0)
+
     employee_predictions = []
-    for idx, row in df.iterrows():
+    for idx, row in enumerate(df.itertuples(index=False)):
         emp_prob = float(predictions[idx])
         prob_pct = round(emp_prob * 100, 1)
 
@@ -315,46 +324,38 @@ def train_and_evaluate_attrition_models() -> Dict[str, Any]:
         else:
             risk_level = 'Low'
 
-        # Calculate explainable feature contributions for this specific employee
-        # Relative to dataset mean
-        emp_features = row[FEATURE_NAMES].to_dict()
         contributions = []
 
-        mean_ot = float(df['overtime_hours'].mean() or 15.0)
-        mean_att = float(df['attendance_rate'].mean() or 0.90)
-        mean_tenure = float(df['tenure_years'].mean() or 2.0)
-        mean_abs = float(df['absence_frequency'].mean() or 1.0)
-
         # Overtime contribution
-        if emp_features['overtime_hours'] > mean_ot:
-            contrib = min(22, round((emp_features['overtime_hours'] - mean_ot) * 0.9, 1))
+        if row.overtime_hours > mean_ot:
+            contrib = min(22, round((row.overtime_hours - mean_ot) * 0.9, 1))
             contributions.append({'factor': 'Elevated Overtime Hours', 'contribution': contrib, 'direction': 'Increases Risk'})
         else:
             contributions.append({'factor': 'Controlled Overtime', 'contribution': -8, 'direction': 'Lowers Risk'})
 
         # Attendance contribution
-        if emp_features['attendance_rate'] < mean_att:
-            contrib = min(20, round((mean_att - emp_features['attendance_rate']) * 100 * 0.8, 1))
+        if row.attendance_rate < mean_att:
+            contrib = min(20, round((mean_att - row.attendance_rate) * 100 * 0.8, 1))
             contributions.append({'factor': 'Attendance Decline', 'contribution': contrib, 'direction': 'Increases Risk'})
         else:
             contributions.append({'factor': 'Consistent Attendance', 'contribution': -10, 'direction': 'Lowers Risk'})
 
         # Age & Workload interaction
-        emp_age = int(emp_features['age'])
-        if emp_age >= 45 and emp_features['overtime_hours'] > 18:
+        emp_age = int(row.age)
+        if emp_age >= 45 and row.overtime_hours > 18:
             contributions.append({'factor': 'Age-Workload Friction', 'contribution': 14, 'direction': 'Increases Risk'})
         elif emp_age <= 21:
             contributions.append({'factor': 'Early Career Mobility', 'contribution': 8, 'direction': 'Increases Risk'})
 
         # Absence frequency
-        if emp_features['absence_frequency'] > mean_abs:
-            contrib = min(15, round((emp_features['absence_frequency'] - mean_abs) * 3.5, 1))
+        if row.absence_frequency > mean_abs:
+            contrib = min(15, round((row.absence_frequency - mean_abs) * 3.5, 1))
             contributions.append({'factor': 'Unscheduled Absences', 'contribution': contrib, 'direction': 'Increases Risk'})
 
         # Tenure stability
-        if emp_features['tenure_years'] > 3.0:
+        if row.tenure_years > 3.0:
             contributions.append({'factor': 'Established Tenure', 'contribution': -12, 'direction': 'Lowers Risk'})
-        elif emp_features['tenure_years'] < 0.6:
+        elif row.tenure_years < 0.6:
             contributions.append({'factor': 'Probationary Phase', 'contribution': 9, 'direction': 'Increases Risk'})
 
         # Sort top 4 contributing factors
@@ -362,17 +363,17 @@ def train_and_evaluate_attrition_models() -> Dict[str, Any]:
         top_factors = contributions[:4]
 
         employee_predictions.append({
-            'employee_id': int(row['employee_id']),
-            'code': str(row['code']),
-            'name': str(row['name']),
-            'role': str(row['role']),
-            'hub': str(row['hub']),
-            'status': str(row['status']),
-            'age': int(emp_features['age']),
-            'tenure_years': float(emp_features['tenure_years']),
-            'salary': float(emp_features['basic_salary']),
-            'overtime_hours': float(emp_features['overtime_hours']),
-            'attendance_rate': round(float(emp_features['attendance_rate']) * 100, 1),
+            'employee_id': int(row.employee_id),
+            'code': str(row.code),
+            'name': str(row.name),
+            'role': str(row.role),
+            'hub': str(row.hub),
+            'status': str(row.status),
+            'age': emp_age,
+            'tenure_years': float(row.tenure_years),
+            'salary': float(row.basic_salary),
+            'overtime_hours': float(row.overtime_hours),
+            'attendance_rate': round(float(row.attendance_rate) * 100, 1),
             'resignation_probability_pct': prob_pct,
             'risk_level': risk_level,
             'top_contributing_factors': top_factors,

@@ -11,57 +11,64 @@ export const LiveLocationTracker = () => {
     if (!isAuthenticated || !navigator.geolocation) return;
 
     const sendLocation = (latitude: number, longitude: number) => {
+      // Do not send if tab is hidden in background
+      if (typeof document !== 'undefined' && document.hidden) return;
+
       const now = Date.now();
-      // Throttle sends to at most once every 15 seconds unless moved > 20 meters
+      // Throttle sends to at most once every 45 seconds unless moved > 50 meters (~0.0005 deg)
       if (lastSentRef.current) {
         const timeDiff = now - lastSentRef.current.time;
         const latDiff = Math.abs(latitude - lastSentRef.current.lat);
         const lngDiff = Math.abs(longitude - lastSentRef.current.lng);
-        if (timeDiff < 15000 && latDiff < 0.0002 && lngDiff < 0.0002) {
+        if (timeDiff < 45000 && latDiff < 0.0005 && lngDiff < 0.0005) {
           return;
         }
       }
 
       lastSentRef.current = { lat: latitude, lng: longitude, time: now };
-      updateLocationMutation.mutate({
-        latitude,
-        longitude,
-        employee: typeof employee?.id === 'number' ? employee.id : undefined,
-      });
+      updateLocationMutation.mutate(
+        {
+          latitude,
+          longitude,
+          employee: typeof employee?.id === 'number' ? employee.id : undefined,
+        },
+        {
+          onError: () => {
+            // Silently swallow network / backend cold-start errors
+          },
+        }
+      );
     };
 
-    // 1. Send immediate position
+    // 1. Send initial position
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         sendLocation(pos.coords.latitude, pos.coords.longitude);
       },
-      (err) => {
-        console.warn('Geolocation access:', err.message);
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
+      () => {},
+      { enableHighAccuracy: false, timeout: 10000 }
     );
 
-    // 2. Watch position continuously
+    // 2. Watch position with low power
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         sendLocation(pos.coords.latitude, pos.coords.longitude);
       },
-      (err) => {
-        console.warn('Geolocation watch:', err.message);
-      },
-      { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+      () => {},
+      { enableHighAccuracy: false, maximumAge: 30000, timeout: 15000 }
     );
 
-    // 3. Periodic fallback interval every 30 seconds
+    // 3. Periodic fallback interval (every 60 seconds)
     const intervalId = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           sendLocation(pos.coords.latitude, pos.coords.longitude);
         },
         () => {},
-        { enableHighAccuracy: true, timeout: 10000 }
+        { enableHighAccuracy: false, timeout: 10000 }
       );
-    }, 30000);
+    }, 60000);
 
     return () => {
       navigator.geolocation.clearWatch(watchId);

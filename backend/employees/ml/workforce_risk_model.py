@@ -11,7 +11,11 @@ from employees.ml.attrition_model import train_and_evaluate_attrition_models
 from employees.ml.leave_demand_model import forecast_future_leave_demand
 
 
-def evaluate_workforce_staffing_risk(horizon_days: int = 14) -> Dict[str, Any]:
+def evaluate_workforce_staffing_risk(
+    horizon_days: int = 14,
+    attrition_data: Dict[str, Any] | None = None,
+    leave_data: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
     """
     Synthesize Attrition Probability and Leave Demand forecasts with
     Hub-level capacity and parcel workload requirements.
@@ -19,9 +23,11 @@ def evaluate_workforce_staffing_risk(horizon_days: int = 14) -> Dict[str, Any]:
     Available Workers = Current Active - Predicted Leave - Predicted Attrition - Operational Buffer
     Staffing Gap = Required Workers - Available Workers
     """
-    # 1. Fetch ML predictions from sub-models
-    attrition_data = train_and_evaluate_attrition_models()
-    leave_data = forecast_future_leave_demand(days_ahead=horizon_days)
+    # 1. Fetch ML predictions from sub-models (reuse precomputed data if supplied)
+    if attrition_data is None:
+        attrition_data = train_and_evaluate_attrition_models()
+    if leave_data is None:
+        leave_data = forecast_future_leave_demand(days_ahead=horizon_days)
 
     emp_predictions = attrition_data.get('employee_predictions', [])
     hub_leaves_map = {
@@ -29,8 +35,8 @@ def evaluate_workforce_staffing_risk(horizon_days: int = 14) -> Dict[str, Any]:
         for h in leave_data.get('hub_leave_demand', [])
     }
 
-    # 2. Group active employees by hub
-    hubs = Hub.objects.all()
+    # 2. Group active employees by hub in memory
+    hubs = list(Hub.objects.only('id', 'name', 'location', 'city').all())
     hub_records = []
     
     total_required_all = 0
@@ -40,15 +46,18 @@ def evaluate_workforce_staffing_risk(horizon_days: int = 14) -> Dict[str, Any]:
     total_available_all = 0
     total_gap_all = 0
 
+    emps_by_hub: Dict[str, List[Dict[str, Any]]] = {}
+    for e in emp_predictions:
+        if e.get('status') == 'Active':
+            emps_by_hub.setdefault(e.get('hub', ''), []).append(e)
+
     for hub in hubs:
         hub_name = hub.name
-        hub_emps = [e for e in emp_predictions if e['hub'] == hub_name and e['status'] == 'Active']
+        hub_emps = emps_by_hub.get(hub_name, [])
         current_active = len(hub_emps)
 
         if current_active == 0:
-            # Check if there are any employees in this hub directly
-            direct_count = Employee.objects.filter(hub=hub, status='Active').count()
-            current_active = direct_count if direct_count > 0 else 4
+            current_active = 4
 
         # Predicted Leave for this hub (from leave model)
         predicted_leave = hub_leaves_map.get(hub_name, max(1, int(round(current_active * 0.15))))

@@ -1206,6 +1206,7 @@ class LoginResponseSerializer(serializers.Serializer):
     token = serializers.CharField(required=False)
 
 class LiveLocationSerializer(serializers.ModelSerializer):
+    employee = serializers.PrimaryKeyRelatedField(queryset=Employee.objects.all(), required=False, allow_null=True)
     employee_name = serializers.CharField(source='employee.full_name', read_only=True)
     employee_id = serializers.CharField(source='employee.employee_id', read_only=True)
     role = serializers.CharField(source='employee.role', read_only=True)

@@ -548,7 +548,8 @@ def heartbeat(request):
         emp.save(update_fields=['last_activity'])
         return Response({'status': 'ok', 'updated': True})
     except Employee.DoesNotExist:
-        return Response({'status': 'no_employee'}, status=status.HTTP_400_BAD_REQUEST)
+        # Admin or root accounts without an employee row: acknowledge heartbeat successfully
+        return Response({'status': 'ok', 'updated': False, 'role': 'admin'}, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])
@@ -2503,14 +2504,22 @@ class LiveLocationViewSet(viewsets.ModelViewSet):
     serializer_class = LiveLocationSerializer
     permission_classes = [IsAuthenticated]
 
+    def create(self, request, *args, **kwargs):
+        emp = getattr(request.user, 'employee', None) or getattr(request.user, 'employee_profile', None)
+        emp_id = request.data.get('employee')
+        if not emp and not emp_id:
+            # Admins or non-employee users don't have an employee record; return 200 OK cleanly without erroring
+            return Response({'status': 'ignored', 'detail': 'No employee profile associated with account'}, status=status.HTTP_200_OK)
+        return super().create(request, *args, **kwargs)
+
     def perform_create(self, serializer):
-        emp = getattr(self.request.user, 'employee_profile', None)
+        emp = getattr(self.request.user, 'employee', None) or getattr(self.request.user, 'employee_profile', None)
         emp_target = serializer.validated_data.get('employee') or emp
         if emp_target:
             LiveLocation.objects.filter(employee=emp_target).delete()
             serializer.save(employee=emp_target)
         else:
-            serializer.save()
+            return
 
 class ServeSavedImageView(APIView):
     """Serve images directly from the database (binary data)"""
@@ -3954,8 +3963,18 @@ class AttritionPredictionView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        from django.core.cache import cache
         from .ml.attrition_model import train_and_evaluate_attrition_models
+        force_refresh = request.query_params.get('refresh', '').lower() == 'true'
+        cache_key = 'prediction_attrition_data'
+
+        if not force_refresh:
+            cached = cache.get(cache_key)
+            if cached:
+                return Response(cached, status=status.HTTP_200_OK)
+
         data = train_and_evaluate_attrition_models()
+        cache.set(cache_key, data, timeout=600)
         return Response(data, status=status.HTTP_200_OK)
 
 
@@ -3968,9 +3987,19 @@ class LeaveDemandPredictionView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        from django.core.cache import cache
         from .ml.leave_demand_model import forecast_future_leave_demand
         days = int(request.query_params.get('days', 14))
+        force_refresh = request.query_params.get('refresh', '').lower() == 'true'
+        cache_key = f'prediction_leave_demand_{days}'
+
+        if not force_refresh:
+            cached = cache.get(cache_key)
+            if cached:
+                return Response(cached, status=status.HTTP_200_OK)
+
         data = forecast_future_leave_demand(days_ahead=days)
+        cache.set(cache_key, data, timeout=600)
         return Response(data, status=status.HTTP_200_OK)
 
 
@@ -3983,9 +4012,19 @@ class WorkforceStaffingRiskView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        from django.core.cache import cache
         from .ml.workforce_risk_model import evaluate_workforce_staffing_risk
         days = int(request.query_params.get('days', 14))
+        force_refresh = request.query_params.get('refresh', '').lower() == 'true'
+        cache_key = f'prediction_workforce_risk_{days}'
+
+        if not force_refresh:
+            cached = cache.get(cache_key)
+            if cached:
+                return Response(cached, status=status.HTTP_200_OK)
+
         data = evaluate_workforce_staffing_risk(horizon_days=days)
+        cache.set(cache_key, data, timeout=600)
         return Response(data, status=status.HTTP_200_OK)
 
 
@@ -3997,19 +4036,33 @@ class PredictionsOverviewView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        from django.core.cache import cache
         from .ml.attrition_model import train_and_evaluate_attrition_models
         from .ml.leave_demand_model import forecast_future_leave_demand
         from .ml.workforce_risk_model import evaluate_workforce_staffing_risk
 
         days = int(request.query_params.get('days', 14))
+        force_refresh = request.query_params.get('refresh', '').lower() == 'true'
+        cache_key = f'predictions_overview_{days}'
+
+        if not force_refresh:
+            cached_result = cache.get(cache_key)
+            if cached_result:
+                return Response(cached_result, status=status.HTTP_200_OK)
+
         attrition = train_and_evaluate_attrition_models()
         leave = forecast_future_leave_demand(days_ahead=days)
-        risk = evaluate_workforce_staffing_risk(horizon_days=days)
+        # Pass already computed attrition and leave models to avoid duplicate execution
+        risk = evaluate_workforce_staffing_risk(horizon_days=days, attrition_data=attrition, leave_data=leave)
 
-        return Response({
+        payload = {
             'attrition': attrition,
             'leave_demand': leave,
             'staffing_risk': risk,
             'generated_at': timezone.now().isoformat(),
-        }, status=status.HTTP_200_OK)
+        }
+        # Cache overview for 10 minutes (600s)
+        cache.set(cache_key, payload, timeout=600)
+
+        return Response(payload, status=status.HTTP_200_OK)
 

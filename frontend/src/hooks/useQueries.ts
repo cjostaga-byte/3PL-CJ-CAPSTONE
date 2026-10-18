@@ -492,13 +492,9 @@ export const useGetLiveLocations = () => {
 };
 
 export const useUpdateLiveLocation = () => {
-  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { latitude: number; longitude: number; employee?: number }) =>
       liveLocationAPI.update(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.LIVE_LOCATIONS });
-    },
   });
 };
 
