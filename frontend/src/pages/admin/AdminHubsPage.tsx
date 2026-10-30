@@ -1218,20 +1218,51 @@ export const AdminHubsPage = () => {
         fetchOsrmProfile('cycling', 'cycling', startLat, startLon, endLat, endLon),
         fetchOsrmProfile('driving', 'driving', startLat, startLon, endLat, endLon),
       ]);
-      if (walking && riding && car) {
-        setRouteData({ walking, riding, car });
+      const bestRoute = car || riding || walking;
+      if (bestRoute) {
+        setRouteData({
+          walking: walking || bestRoute,
+          riding: riding || bestRoute,
+          car: car || bestRoute,
+        });
         setShowDirections(true);
+      } else {
+        window.open(`https://www.google.com/maps/dir/?api=1&origin=${startLat},${startLon}&destination=${endLat},${endLon}`, '_blank');
       }
     } catch (error) {
       console.error(error);
+      window.open(`https://www.google.com/maps/dir/?api=1&origin=${startLat},${startLon}&destination=${endLat},${endLon}`, '_blank');
     } finally {
       setLoadingRoute(false);
     }
   };
 
   const handleGetDirections = () => {
-    if (!userLocation || !hubState.selectedHub) return;
+    if (!hubState.selectedHub) return;
     const coords = getHubCoordinates(hubState.selectedHub);
+
+    if (!userLocation) {
+      if (navigator.geolocation) {
+        setLoadingRoute(true);
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const loc: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+            setUserLocation(loc);
+            fetchRealRoute(loc[0], loc[1], coords[0], coords[1]);
+          },
+          (err) => {
+            console.warn('Geolocation failed or denied, opening in Google Maps', err);
+            setLoadingRoute(false);
+            window.open(`https://www.google.com/maps/dir/?api=1&destination=${coords[0]},${coords[1]}`, '_blank');
+          },
+          { enableHighAccuracy: true, timeout: 8000 }
+        );
+      } else {
+        window.open(`https://www.google.com/maps/dir/?api=1&destination=${coords[0]},${coords[1]}`, '_blank');
+      }
+      return;
+    }
+
     fetchRealRoute(userLocation[0], userLocation[1], coords[0], coords[1]);
   };
 

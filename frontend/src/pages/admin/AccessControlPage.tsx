@@ -95,21 +95,6 @@ export const AccessControlPage = () => {
   const paginatedEmployees = employees;
   const filteredEmployees = employees;
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-dark-bg">
-        {/* DESKTOP SIDEBAR ONLY */}
-        <div className="hidden lg:block">
-          <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
-        </div>
-
-        <div className="p-4 lg:p-6 lg:ml-64 min-h-screen space-y-4">
-          <SkeletonTable rows={8} cols={5} />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-dark-bg">
       {/* DESKTOP SIDEBAR ONLY */}
@@ -223,8 +208,10 @@ export const AccessControlPage = () => {
         <Card className="max-md:p-3">
           <h2 className="text-lg max-md:text-base font-bold text-red-700 mb-4 max-md:mb-3 border-b pb-3 max-md:pb-2">Access User List</h2>
 
-          {filteredEmployees.length > 0 ? (
-            <>
+          {isLoading && filteredEmployees.length === 0 ? (
+            <SkeletonTable rows={8} cols={5} />
+          ) : filteredEmployees.length > 0 ? (
+            <div className={isLoading ? 'opacity-60 transition-opacity pointer-events-none' : ''}>
               {/* DESKTOP TABLE */}
               <div className="overflow-x-auto max-md:hidden">
                 <table className="w-full text-sm">
@@ -346,7 +333,7 @@ export const AccessControlPage = () => {
                   </button>
                 </div>
               )}
-            </>
+            </div>
           ) : (
             <EmptyState title="No users found" description="Try adjusting your filters" />
           )}

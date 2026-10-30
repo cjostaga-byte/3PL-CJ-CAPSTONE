@@ -3643,6 +3643,38 @@ class DashboardAnalyticsView(APIView):
         ]
         awol_resign_blacklist.sort(key=lambda x: x['awol'] + x['resign'] + x['blacklist'], reverse=True)
 
+        # ── 4b. Full Status Distribution per Hub (for Chart) ──
+        hub_all_status_rows = (
+            base_emp_qs.filter(hub__isnull=False)
+            .values('hub__name')
+            .annotate(
+                active=Count('id', filter=Q(status='Active')),
+                awol=Count('id', filter=Q(status='AWOL')),
+                resign=Count('id', filter=Q(status__in=['Resign', 'Resigned'])),
+                blacklist=Count('id', filter=Q(status='Blacklist')),
+            )
+        )
+        hub_dist_map = {
+            row['hub__name']: {
+                'name': row['hub__name'],
+                'Active': row['active'],
+                'AWOL': row['awol'],
+                'Resign': row['resign'],
+                'Blacklist': row['blacklist'],
+            }
+            for row in hub_all_status_rows
+        }
+        hub_employee_distribution = [
+            hub_dist_map.get(h.name, {
+                'name': h.name,
+                'Active': 0,
+                'AWOL': 0,
+                'Resign': 0,
+                'Blacklist': 0,
+            })
+            for h in hubs_qs
+        ]
+
         # ── 5. Attendance Approval Status (today) (Single Aggregate Query) ──
         att_today_qs = Attendance.objects.filter(date=today)
         if managed_hub_ids is not None:
@@ -3884,6 +3916,7 @@ class DashboardAnalyticsView(APIView):
             'payslip_trend': payslip_trend,
             'highest_paid_employees': highest_paid_employees,
             'hub_total_pay': hub_total_pay,
+            'hub_employee_distribution': hub_employee_distribution,
         })
 
 

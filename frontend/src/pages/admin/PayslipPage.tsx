@@ -323,15 +323,6 @@ export const PayslipPage = () => {
     }
   };
 
-  if (payrollLoading || hubsLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-dark-bg p-4 lg:p-6 lg:ml-64 space-y-6">
-        <SkeletonStatCard count={4} />
-        <SkeletonTable rows={8} cols={6} />
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-dark-bg">
       <div className="hidden lg:block">
@@ -421,8 +412,11 @@ export const PayslipPage = () => {
           </div>
         </Card>
 
-        {Object.keys(payrollByHub).length > 0 ? (
-          Object.entries(payrollByHub).map(([hubName, records]) => (
+        {hubsLoading || (payrollLoading && Object.keys(payrollByHub).length === 0) ? (
+          <SkeletonTable rows={8} cols={6} />
+        ) : Object.keys(payrollByHub).length > 0 ? (
+          <div className={payrollLoading ? 'opacity-70 transition-opacity' : ''}>
+            {Object.entries(payrollByHub).map(([hubName, records]) => (
             <Card key={hubName} className="max-md:p-3 max-md:bg-transparent max-md:border-none max-md:shadow-none">
               <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-200 dark:border-gray-700">
                 <h2 className="text-lg max-md:text-base font-bold text-red-700">Payroll List</h2>
@@ -558,7 +552,8 @@ export const PayslipPage = () => {
                 </div>
               )}
             </Card>
-          ))
+          ))}
+          </div>
         ) : (
           <Card>
             <EmptyState

@@ -12,9 +12,18 @@ import {
 import { Hub, Employee } from '@/types';
 import { useTheme } from '@/context/ThemeContext';
 
+export interface HubDistributionItem {
+  name: string;
+  Active: number;
+  AWOL: number;
+  Resign: number;
+  Blacklist: number;
+}
+
 interface Props {
   hubsData?: Hub[];
   employees?: Employee[];
+  data?: HubDistributionItem[];
 }
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -36,11 +45,14 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   );
 };
 
-export default function HubsEmployeeChart({ hubsData = [], employees = [] }: Props) {
+export default function HubsEmployeeChart({ hubsData = [], employees = [], data }: Props) {
   const { isDarkMode } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
 
   const dataset = useMemo(() => {
+    if (data && data.length > 0) {
+      return data;
+    }
     return hubsData.map((hub) => {
       const hubEmployees = employees.filter((emp) => {
         if (emp.hub == null) return false;
@@ -59,7 +71,7 @@ export default function HubsEmployeeChart({ hubsData = [], employees = [] }: Pro
         Blacklist: countByStatus('blacklist'),
       };
     });
-  }, [hubsData, employees]);
+  }, [hubsData, employees, data]);
 
   const filteredDataset = dataset.filter(
     (d) => d.Active || d.AWOL || d.Resign || d.Blacklist

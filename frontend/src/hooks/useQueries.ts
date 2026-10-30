@@ -27,6 +27,7 @@ export const useGetEmployees = (params?: Record<string, any>, options?: { enable
     staleTime: 2 * 60 * 1000, // 2 minutes
     retry: 1,
     enabled: options?.enabled !== undefined ? options.enabled : true,
+    placeholderData: (previousData: any) => previousData,
   });
 };
 
@@ -151,6 +152,7 @@ export const useGetAttendance = (params?: Record<string, any>) => {
     queryFn: () => attendanceAPI.getAttendance(params),
     staleTime: 1 * 60 * 1000, // 1 minute
     enabled: isEnabled,
+    placeholderData: (previousData: any) => previousData,
   });
 };
 
@@ -195,6 +197,7 @@ export const useGetPayroll = (params?: Record<string, any>) => {
     queryKey: [QUERY_KEYS.PAYROLL, params],
     queryFn: () => payrollAPI.getPayroll(params),
     staleTime: 10 * 60 * 1000, // 10 minutes – payroll data changes infrequently
+    placeholderData: (previousData: any) => previousData,
   });
 };
 

@@ -46,11 +46,14 @@ export const AttendancePage = () => {
     setSelectedClockOutImage(null);
   };
 
+  const [isApproving, setIsApproving] = useState(false);
+
   const handleToggleApprove = async (approve: boolean) => {
-    if (!selectedRecord?.id) {
-      toast.error("Invalid attendance record. Cannot perform action on absent mock records.");
+    if (!selectedRecord?.id || isApproving) {
+      if (!selectedRecord?.id) toast.error("Invalid attendance record. Cannot perform action on absent mock records.");
       return;
     }
+    setIsApproving(true);
     const loader = toast.loading(approve ? 'Approving attendance...' : 'Disapproving attendance...');
     try {
       if (approve) {
@@ -64,6 +67,7 @@ export const AttendancePage = () => {
     } catch (err: any) {
       toast.error(err?.message || 'Failed to update attendance status');
     } finally {
+      setIsApproving(false);
       toast.dismiss(loader);
     }
   };
@@ -286,15 +290,6 @@ export const AttendancePage = () => {
     }
   };
 
-  if (attendanceLoading || hubsLoading || employeesLoading) {
-    return (
-      <div className="p-4 lg:p-6 lg:ml-64 min-h-screen space-y-6">
-        <SkeletonStatCard count={3} />
-        <SkeletonTable rows={8} cols={6} />
-      </div>
-    );
-  }
-
   const renderPhotoViewer = () => {
     if (!photoViewerOpen) return null;
 
@@ -363,15 +358,16 @@ export const AttendancePage = () => {
               <button
                 type="button"
                 onClick={() => handleToggleApprove(true)}
-                disabled={selectedRecord?.is_approved}
-                className={`px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl text-xs transition-colors shadow-sm shadow-green-500/10 ${selectedRecord?.is_approved ? 'opacity-50 cursor-not-allowed' : ''}`}
+                disabled={isApproving || selectedRecord?.is_approved}
+                className={`px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl text-xs transition-colors shadow-sm shadow-green-500/10 ${isApproving || selectedRecord?.is_approved ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
-                Approve Attendance
+                {isApproving ? 'Updating...' : 'Approve Attendance'}
               </button>
               <button
                 type="button"
                 onClick={() => handleToggleApprove(false)}
-                className="px-4 py-2 bg-red-50 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 font-bold rounded-xl text-xs transition-colors border border-red-200/50 dark:border-red-900/30"
+                disabled={isApproving}
+                className={`px-4 py-2 bg-red-50 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-950/40 text-red-600 dark:text-red-400 font-bold rounded-xl text-xs transition-colors border border-red-200/50 dark:border-red-900/30 ${isApproving ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 Disapprove Attendance
               </button>
@@ -509,8 +505,11 @@ export const AttendancePage = () => {
       </Card>
 
       {/* Attendance by Hub */}
-      {Object.keys(attendanceByHub).length > 0 ? (
-        Object.entries(attendanceByHub).map(([hubName, records]) => (
+      {hubsLoading || (attendanceLoading && Object.keys(attendanceByHub).length === 0) ? (
+        <SkeletonTable rows={8} cols={6} />
+      ) : Object.keys(attendanceByHub).length > 0 ? (
+        <div className={attendanceLoading ? 'opacity-70 transition-opacity' : ''}>
+          {Object.entries(attendanceByHub).map(([hubName, records]) => (
           <Card key={hubName} className="max-md:p-3 max-md:bg-transparent max-md:border-none max-md:shadow-none">
             <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-200 dark:border-gray-700">
               <div>
@@ -702,7 +701,8 @@ export const AttendancePage = () => {
               </div>
             )}
           </Card>
-        ))
+        ))}
+        </div>
       ) : (
         <Card>
           <div className="py-12">

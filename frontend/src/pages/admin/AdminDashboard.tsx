@@ -6,7 +6,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { useAuth } from '@/hooks/useAuth';
 import { Search, X, User, Phone, Briefcase, Shield, Clock, Landmark, ChevronLeft, ChevronRight } from 'lucide-react';
 import { normalizeApiResponse } from '@/utils/apiResponseHandler';
-import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import HubsEmployeeChart from '@/components/HubsEmployeeChart';
@@ -278,13 +278,30 @@ export const AdminDashboard = () => {
 
   // Hub-specific employee distribution from SQL aggregation
   const hubEmployeeData = useMemo(() => {
-    if (Array.isArray(analytics?.hub_active_counts)) {
-      return analytics.hub_active_counts.map((item: any) => ({
+    if (Array.isArray(analytics?.hub_employee_distribution) && analytics.hub_employee_distribution.length > 0) {
+      return analytics.hub_employee_distribution.map((item: any) => ({
+        name: item.name,
+        active: Number(item.Active) || 0,
+        awol: Number(item.AWOL) || 0,
+        blacklist: Number(item.Blacklist) || 0,
+        resign: Number(item.Resign) || 0,
+        Active: Number(item.Active) || 0,
+        AWOL: Number(item.AWOL) || 0,
+        Blacklist: Number(item.Blacklist) || 0,
+        Resign: Number(item.Resign) || 0,
+      }));
+    }
+    if (Array.isArray(analytics?.top_hubs_active)) {
+      return analytics.top_hubs_active.map((item: any) => ({
         name: item.hub_name,
         active: Number(item.active_count) || 0,
         awol: 0,
         blacklist: 0,
         resign: 0,
+        Active: Number(item.active_count) || 0,
+        AWOL: 0,
+        Blacklist: 0,
+        Resign: 0,
       }));
     }
     return [];
@@ -366,8 +383,8 @@ export const AdminDashboard = () => {
           </div>
 
           <div className="min-h-[250px] w-full overflow-x-auto thin-scrollbar pb-2">
-            {hubEmployeeData.length > 0 && allEmployees.length > 0 ? (
-              <HubsEmployeeChart hubsData={hubs} employees={allEmployees} />
+            {hubEmployeeData.length > 0 ? (
+              <HubsEmployeeChart data={hubEmployeeData} hubsData={hubs} />
             ) : (
               <EmptyState title="No delivery center data" />
             )}
@@ -384,7 +401,7 @@ export const AdminDashboard = () => {
               </div>
               <p className="text-xs text-gray-800 dark:text-gray-400">
                 <span className="text-gray-905 dark:text-white font-medium">
-                  {hubEmployeeData.reduce((prev: any, current: any) => (prev.active > current.active) ? prev : current).name} Delivery Center
+                  {hubEmployeeData.reduce((prev: any, current: any) => (((prev.active || prev.Active || 0) > (current.active || current.Active || 0)) ? prev : current), hubEmployeeData[0])?.name} Delivery Center
                 </span> has the highest number of active employees.
               </p>
             </div>
@@ -533,7 +550,22 @@ export const AdminDashboard = () => {
               key={hub.id}
               position={[lat, lng]}
               icon={hubIcon}
-            />
+            >
+              <Popup>
+                <div className="p-1 min-w-[150px]">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                    <p className="font-bold text-xs text-gray-900">{hub.name}</p>
+                  </div>
+                  <p className="text-[11px] text-gray-600">{hub.address || hub.city || hub.location || 'Delivery Center Location'}</p>
+                  {typeof hub.employee_count === 'number' && (
+                    <p className="text-[10px] text-emerald-600 font-medium mt-1">
+                      {hub.employee_count} employees
+                    </p>
+                  )}
+                </div>
+              </Popup>
+            </Marker>
           );
         })}
     </MapContainer>
