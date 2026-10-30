@@ -67,6 +67,11 @@ const OSRM_BASE = 'https://router.project-osrm.org/route/v1';
 const WALKING_SPEED_KMH = 4.8;
 const CYCLING_SPEED_KMH = 15;
 const DRIVING_SPEED_KMH = 35;
+const MANILA_DEFAULT: [number, number] = [14.5995, 120.9842];
+
+const isWithinPhilippines = (lat: number, lon: number): boolean => {
+  return lat >= 4.0 && lat <= 22.0 && lon >= 116.0 && lon <= 127.5;
+};
 
 // ======================================
 // TYPES
@@ -161,6 +166,9 @@ function parseOsrmResponse(
   if (!data?.routes?.length) return null;
 
   const route = data.routes[0];
+  if (!route?.geometry?.coordinates || route.geometry.coordinates.length < 2) {
+    return null;
+  }
   const coordinates: [number, number][] =
     route.geometry.coordinates.map((coord: [number, number]) => [
       coord[1],
@@ -218,6 +226,7 @@ async function fetchOsrmProfile(
     const response = await fetch(url);
     if (!response.ok) return null;
     const data = await response.json();
+    if (data.code !== 'Ok') return null;
     return parseOsrmResponse(data, mode);
   } catch {
     return null;
@@ -931,9 +940,21 @@ export const AdminHubsPage = () => {
 
   useEffect(() => {
     if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((position) => {
-        setUserLocation([position.coords.latitude, position.coords.longitude]);
-      });
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          if (isWithinPhilippines(latitude, longitude)) {
+            setUserLocation([latitude, longitude]);
+          } else {
+            setUserLocation(MANILA_DEFAULT);
+          }
+        },
+        () => {
+          setUserLocation(MANILA_DEFAULT);
+        }
+      );
+    } else {
+      setUserLocation(MANILA_DEFAULT);
     }
   }, []);
 
@@ -1233,17 +1254,6 @@ export const AdminHubsPage = () => {
   // ROUTES
   // ======================================
 
-  const calculateDistanceM = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371e3;
-    const p1 = (lat1 * Math.PI) / 180;
-    const p2 = (lat2 * Math.PI) / 180;
-    const dp = ((lat2 - lat1) * Math.PI) / 180;
-    const dl = ((lon2 - lon1) * Math.PI) / 180;
-    const a = Math.sin(dp / 2) * Math.sin(dp / 2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return Math.round(R * c);
-  };
-
   const fetchRealRoute = async (
     startLat: number,
     startLon: number,
@@ -1252,68 +1262,55 @@ export const AdminHubsPage = () => {
   ) => {
     setLoadingRoute(true);
     try {
-      const [walking, riding, car] = await Promise.all([
-        fetchOsrmProfile('foot', 'walking', startLat, startLon, endLat, endLon),
-        fetchOsrmProfile('cycling', 'cycling', startLat, startLon, endLat, endLon),
-        fetchOsrmProfile('driving', 'driving', startLat, startLon, endLat, endLon),
-      ]);
-      const best = car || riding || walking;
-      if (best && best.coordinates && best.coordinates.length > 0) {
-        setRouteData({
-          walking: walking || best,
-          riding: riding || best,
-          car: car || best,
-        });
-        setShowDirections(true);
-      } else {
-        const dist = calculateDistanceM(startLat, startLon, endLat, endLon);
-        const directRoute: ParsedOsrmRoute = {
-          coordinates: [
-            [startLat, startLon],
-            [endLat, endLon],
-          ],
-          distanceM: dist,
-          durationSec: Math.round(dist / (35 * 1000 / 3600)),
-          turns: [],
-          turnCount: 0,
-        };
-        setRouteData({
-          walking: directRoute,
-          riding: directRoute,
-          car: directRoute,
-        });
-        setShowDirections(true);
+      // 1. Fetch Driving route first (primary navigation)
+      const car = await fetchOsrmProfile('driving', 'driving', startLat, startLon, endLat, endLon);
+
+      if (!car || !car.coordinates || car.coordinates.length < 2) {
+        toast.error('No road-based driving route found to this delivery center.');
+        setShowDirections(false);
+        setRouteData(null);
+        return;
       }
-    } catch (error) {
-      console.warn('Error fetching route, using straight polyline', error);
-      const dist = calculateDistanceM(startLat, startLon, endLat, endLon);
-      const directRoute: ParsedOsrmRoute = {
-        coordinates: [
-          [startLat, startLon],
-          [endLat, endLon],
-        ],
-        distanceM: dist,
-        durationSec: Math.round(dist / (35 * 1000 / 3600)),
-        turns: [],
-        turnCount: 0,
-      };
+
+      // 2. Fetch walking and cycling routes in parallel
+      const [walking, riding] = await Promise.all([
+        fetchOsrmProfile('foot', 'walking', startLat, startLon, endLat, endLon),
+        fetchOsrmProfile('bike', 'cycling', startLat, startLon, endLat, endLon),
+      ]);
+
       setRouteData({
-        walking: directRoute,
-        riding: directRoute,
-        car: directRoute,
+        walking: walking || {
+          ...car,
+          durationSec: estimateTravelTime(car.distanceM, WALKING_SPEED_KMH),
+        },
+        riding: riding || {
+          ...car,
+          durationSec: estimateTravelTime(car.distanceM, CYCLING_SPEED_KMH),
+        },
+        car,
       });
       setShowDirections(true);
+    } catch (error) {
+      console.error('Error fetching road route from OSRM', error);
+      toast.error('Failed to calculate road route. Please check your connection and try again.');
+      setShowDirections(false);
+      setRouteData(null);
     } finally {
       setLoadingRoute(false);
     }
   };
 
   const handleGetDirections = () => {
-    if (!hubState.selectedHub) return;
+    if (!hubState.selectedHub || loadingRoute) return;
     const coords = getHubCoordinates(hubState.selectedHub);
 
-    if (userLocation) {
-      fetchRealRoute(userLocation[0], userLocation[1], coords[0], coords[1]);
+    const resolveOriginAndRoute = (startCoords: [number, number]) => {
+      setUserLocation(startCoords);
+      fetchRealRoute(startCoords[0], startCoords[1], coords[0], coords[1]);
+    };
+
+    if (userLocation && isWithinPhilippines(userLocation[0], userLocation[1])) {
+      resolveOriginAndRoute(userLocation);
       return;
     }
 
@@ -1321,22 +1318,24 @@ export const AdminHubsPage = () => {
       setLoadingRoute(true);
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          const loc: [number, number] = [pos.coords.latitude, pos.coords.longitude];
-          setUserLocation(loc);
-          fetchRealRoute(loc[0], loc[1], coords[0], coords[1]);
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          if (isWithinPhilippines(lat, lon)) {
+            resolveOriginAndRoute([lat, lon]);
+          } else {
+            toast('Detected location outside Philippines. Using Metro Manila as starting point.', {
+              icon: '📍',
+            });
+            resolveOriginAndRoute(MANILA_DEFAULT);
+          }
         },
-        (err) => {
-          console.warn('Geolocation unavailable, defaulting to Manila', err);
-          const defaultLoc: [number, number] = [14.5995, 120.9842];
-          setUserLocation(defaultLoc);
-          fetchRealRoute(defaultLoc[0], defaultLoc[1], coords[0], coords[1]);
+        () => {
+          resolveOriginAndRoute(MANILA_DEFAULT);
         },
         { enableHighAccuracy: true, timeout: 6000 }
       );
     } else {
-      const defaultLoc: [number, number] = [14.5995, 120.9842];
-      setUserLocation(defaultLoc);
-      fetchRealRoute(defaultLoc[0], defaultLoc[1], coords[0], coords[1]);
+      resolveOriginAndRoute(MANILA_DEFAULT);
     }
   };
 
@@ -1344,6 +1343,14 @@ export const AdminHubsPage = () => {
     setHubState({ selectedHub: hub });
     setEmployeeSearch('');
     setCurrentPage(1);
+
+    if (showDirections) {
+      const coords = getHubCoordinates(hub);
+      const origin = userLocation && isWithinPhilippines(userLocation[0], userLocation[1])
+        ? userLocation
+        : MANILA_DEFAULT;
+      fetchRealRoute(origin[0], origin[1], coords[0], coords[1]);
+    }
   };
 
   const handleCloseHub = () => {
@@ -1472,20 +1479,7 @@ export const AdminHubsPage = () => {
                             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
                             <p className="font-bold text-xs text-gray-900">{hub.name}</p>
                           </div>
-                          <p className="text-[11px] text-gray-600 mb-2">{hub.address || hub.city || 'Delivery Center Location'}</p>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleMarkerClick(hub);
-                              handleGetDirections();
-                            }}
-                            disabled={loadingRoute}
-                            className="w-full py-1.5 px-2 text-[11px] font-semibold text-white bg-gradient-to-r from-red-600 to-rose-600 rounded-lg flex items-center justify-center gap-1 shadow-sm hover:opacity-90 disabled:opacity-50 transition-opacity cursor-pointer"
-                          >
-                            <Navigation size={12} className={loadingRoute ? 'animate-spin' : ''} />
-                            <span>{loadingRoute ? 'Routing...' : 'Get Location'}</span>
-                          </button>
+                          <p className="text-[11px] text-gray-600">{hub.address || hub.city || 'Delivery Center Location'}</p>
                         </div>
                       </Popup>
                     </Marker>
@@ -1662,35 +1656,6 @@ export const AdminHubsPage = () => {
                 </div>
               )}
 
-              {/* FLOATING "GET LOCATION" BUTTON ON LOWER RIGHT OF MAP */}
-              {hubState.selectedHub && (
-                <div
-                  className={`absolute ${
-                    showDirections ? 'bottom-20 md:bottom-24' : 'bottom-4'
-                  } right-4 z-[1000] flex items-center gap-2 transition-all duration-300`}
-                >
-                  <button
-                    onClick={handleGetDirections}
-                    disabled={loadingRoute}
-                    className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-500 hover:from-red-700 hover:to-rose-700 text-white text-xs sm:text-sm font-bold flex items-center gap-2 shadow-2xl shadow-red-600/50 hover:shadow-red-600/70 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all border border-white/25 cursor-pointer backdrop-blur-md"
-                  >
-                    <Navigation size={16} className={`text-white fill-white ${loadingRoute ? 'animate-spin' : ''}`} />
-                    <span>{loadingRoute ? 'Routing...' : 'Get Location'}</span>
-                  </button>
-                  {showDirections && (
-                    <button
-                      onClick={() => {
-                        setShowDirections(false);
-                        setRouteData(null);
-                      }}
-                      className="h-10 px-3.5 rounded-2xl bg-white/95 dark:bg-[#0b1220]/95 hover:bg-gray-100 dark:hover:bg-white/10 text-gray-700 dark:text-gray-200 text-xs font-semibold flex items-center gap-1.5 shadow-xl border border-gray-200 dark:border-white/10 backdrop-blur-md transition-all cursor-pointer"
-                    >
-                      <X size={14} />
-                      <span>Clear Route</span>
-                    </button>
-                  )}
-                </div>
-              )}
               </div>
 
             {/* RIGHT PANEL */}
@@ -1888,21 +1853,40 @@ export const AdminHubsPage = () => {
                         </div>
                       )}
 
-                      {/* Directions button */}
-                      <button
-                        onClick={handleGetDirections}
-                        disabled={loadingRoute}
-                        className="w-full h-10 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 text-white text-sm font-semibold flex items-center justify-center gap-2 shadow-lg shadow-red-500/20 hover:shadow-red-500/30 hover:brightness-110 disabled:opacity-50 transition-all"
-                      >
-                        {loadingRoute ? (
-                          <LoadingSpinner size="sm" />
-                        ) : (
-                          <>
-                            <Navigation size={16} />
-                            Get Location
-                          </>
+                      {/* Main Directions button */}
+                      <div className="space-y-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={handleGetDirections}
+                          disabled={loadingRoute}
+                          className="w-full h-11 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 text-white text-sm font-semibold flex items-center justify-center gap-2 shadow-lg shadow-red-500/20 hover:shadow-red-500/30 hover:brightness-110 disabled:opacity-50 transition-all cursor-pointer"
+                        >
+                          {loadingRoute ? (
+                            <>
+                              <LoadingSpinner size="sm" />
+                              <span>Routing...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Navigation size={16} />
+                              <span>{showDirections ? 'Recalculate Route' : 'Get Location'}</span>
+                            </>
+                          )}
+                        </button>
+                        {showDirections && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowDirections(false);
+                              setRouteData(null);
+                            }}
+                            className="w-full h-8 rounded-xl border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.04] text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <X size={14} />
+                            <span>Clear Route</span>
+                          </button>
                         )}
-                      </button>
+                      </div>
                     </div>
                   </div>
                 ) : (
