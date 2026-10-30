@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Card, Badge, LoadingSpinner, EmptyState } from '@/components/common';
 import { SkeletonDashboard, SkeletonTable } from '@/components/Skeleton';
-import { useGetEmployees, useGetHubs } from '@/hooks/useQueries';
+import { useGetEmployees, useGetHubs, useGetDashboardAnalytics } from '@/hooks/useQueries';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { useAuth } from '@/hooks/useAuth';
 import { Search, X, User, Phone, Briefcase, Shield, Clock, Landmark, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -14,6 +14,7 @@ import { EmployeeDocumentsCard } from '@/components/EmployeeDocumentsCard';
 import { Sidebar } from '@/components/Sidebar';
 import { MobileAdminDashboardView } from './MobileAdminDashboardView';
 import { AdminDashboardOverview } from '@/components/AdminDashboardOverview';
+import { LazyViewport } from '@/components/LazyViewport';
 
 
 const FitBoundsComponent = ({
@@ -193,17 +194,30 @@ export const AdminDashboard = () => {
   };
 
 
-  // Fetch data — avoid sending null hub_id; dashboard does not need attendance/logs upfront
-  const employeesQuery = useGetEmployees(hubFilter ? { hub_id: hubFilter } : undefined);
+  // Fetch lightweight aggregated analytics for charts & KPI cards (<8 KB payload)
+  const analyticsQuery = useGetDashboardAnalytics(hubFilter ? { hub_id: hubFilter } : undefined);
+  const analytics = analyticsQuery.data;
+
+  // Fetch paginated 10 records for the bottom mini employee table only
+  const itemsPerPage = 10;
+  const employeesParams = useMemo(() => {
+    const params: Record<string, any> = {
+      page: employeesPage,
+      page_size: itemsPerPage,
+    };
+    if (hubFilter) params.hub_id = hubFilter;
+    if (searchTerm.trim()) params.search = searchTerm.trim();
+    return params;
+  }, [employeesPage, itemsPerPage, hubFilter, searchTerm]);
+
+  const employeesQuery = useGetEmployees(employeesParams);
   const hubsQuery = useGetHubs();
 
   const hubsLoading = hubsQuery.isLoading;
   const employeesLoading = employeesQuery.isLoading;
   const employeesError = employeesQuery.isError;
 
-
-
-// Process data
+  // Process data
   const managedHubIds = useMemo(() => {
     if (!isHR || !employee?.hr_permissions?.managed_hubs) return null;
     return employee.hr_permissions.managed_hubs.map((h: any) => typeof h === 'number' ? h : h.id);
@@ -217,107 +231,64 @@ export const AdminDashboard = () => {
     return rawHubs;
   }, [hubsQuery.data, isHR, managedHubIds]);
 
-  const allEmployees = useMemo(() => {
-    let raw = normalizeApiResponse(employeesQuery.data);
-    if (isHR && managedHubIds) {
-      raw = raw.filter((emp: any) => {
-         const hubId = typeof emp.hub === 'object' ? emp.hub?.id : emp.hub;
-         return managedHubIds.includes(hubId);
-      });
-    }
-    return raw;
-  }, [employeesQuery.data, isHR, managedHubIds]);
+  const paginatedEmployees: any[] = normalizeApiResponse(employeesQuery.data) || [];
+  const employees = paginatedEmployees;
+  const allEmployees = paginatedEmployees;
 
-  const totalEmployees = allEmployees.length;
+  const totalEmployeesCount = typeof (employeesQuery.data as any)?.count === 'number'
+    ? (employeesQuery.data as any).count
+    : (analytics?.total_employees_count ?? paginatedEmployees.length);
 
-  const employees = useMemo(() => {
-    const q = searchTerm.toLowerCase();
-    if (!q) return allEmployees;
-    return allEmployees.filter((emp: any) => {
-      const name = String(emp.full_name || `${emp.firstname || ''} ${emp.lastname || ''}`).toLowerCase();
-      const empId = String(emp.employee_id || '').toLowerCase();
-      return name.includes(q) || empId.includes(q);
-    });
-  }, [allEmployees, searchTerm]);
+  const totalEmployees = analytics?.total_employees_count ?? totalEmployeesCount;
+  const totalEmployeesPages = Math.max(1, Math.ceil(totalEmployeesCount / itemsPerPage));
 
   useEffect(() => {
     setEmployeesPage(1);
-  }, [searchTerm]);
+  }, [searchTerm, hubFilter]);
 
-  const itemsPerPage = 10;
-  const totalEmployeesPages = Math.ceil(employees.length / itemsPerPage);
-  const paginatedEmployees = useMemo(() => {
-    const start = (employeesPage - 1) * itemsPerPage;
-    return employees.slice(start, start + itemsPerPage);
-  }, [employees, employeesPage]);
-
-  // Employment type distribution
+  // Employment type distribution from SQL aggregation
   const employmentTypeData = useMemo(() => {
-    const types = {} as Record<string, number>;
-    allEmployees.forEach((emp: any) => {
-      types[emp.employment_type] = (types[emp.employment_type] || 0) + 1;
-    });
-    return Object.entries(types).map(([name, value]) => ({ name, value }));
-  }, [allEmployees]);
+    if (analytics?.employment_type_counts) {
+      return Object.entries(analytics.employment_type_counts).map(([name, value]) => ({
+        name,
+        value: Number(value),
+      }));
+    }
+    return [
+      { name: 'Full-time', value: 0 },
+      { name: 'OCW', value: 0 },
+    ];
+  }, [analytics]);
 
-  // Employee status distribution
+  // Employee status distribution from SQL aggregation
   const statusData = useMemo(() => {
-    const statuses = {} as Record<string, number>;
-    const normalize = (s: any) => {
-      const st = String(s || 'Active').trim().toLowerCase();
-      switch (st) {
-        case 'active':
-          return 'Active';
-        case 'awol':
-          return 'AWOL';
-        case 'blacklist':
-          return 'Blacklist';
-        case 'resign':
-          return 'Resign';
-        default:
-          return 'Active';
-      }
-    };
-    allEmployees.forEach((emp: any) => {
-      const key = normalize(emp.status);
-      statuses[key] = (statuses[key] || 0) + 1;
-    });
-    return Object.entries(statuses).map(([name, value]) => ({ name, value }));
-  }, [allEmployees]);
+    if (analytics?.employee_status_counts) {
+      return Object.entries(analytics.employee_status_counts).map(([name, value]) => ({
+        name,
+        value: Number(value),
+      }));
+    }
+    return [
+      { name: 'Active', value: 0 },
+      { name: 'AWOL', value: 0 },
+      { name: 'Blacklist', value: 0 },
+      { name: 'Resign', value: 0 },
+    ];
+  }, [analytics]);
 
-  // Hub-specific employee distribution with status breakdown (normalized keys)
+  // Hub-specific employee distribution from SQL aggregation
   const hubEmployeeData = useMemo(() => {
-    type HubStatuses = {
-      active: number;
-      awol: number;
-      blacklist: number;
-      resign: number;
-    };
-
-    const hubMap: Record<string, HubStatuses> = {};
-
-    allEmployees.forEach((emp: any) => {
-      const hubName = emp.hub_name || 'Unknown Hub';
-      if (!hubMap[hubName]) {
-        hubMap[hubName] = { active: 0, awol: 0, blacklist: 0, resign: 0 };
-      }
-      const st = String(emp.status || 'Active').trim().toLowerCase();
-      if (st === 'inactive') return;
-      if (st === 'active') hubMap[hubName].active += 1;
-      else if (st === 'awol') hubMap[hubName].awol += 1;
-      else if (st === 'blacklist') hubMap[hubName].blacklist += 1;
-      else if (st === 'resign') hubMap[hubName].resign += 1;
-      else hubMap[hubName].active += 1;
-    });
-
-    return Object.entries(hubMap).map(([name, statuses]) => ({
-      name,
-      active: statuses.active || 0,
-      awol: statuses.awol || 0,
-      blacklist: statuses.blacklist || 0,
-      resign: statuses.resign || 0,
-    }));
-  }, [allEmployees]);
+    if (Array.isArray(analytics?.hub_active_counts)) {
+      return analytics.hub_active_counts.map((item: any) => ({
+        name: item.hub_name,
+        active: Number(item.active_count) || 0,
+        awol: 0,
+        blacklist: 0,
+        resign: 0,
+      }));
+    }
+    return [];
+  }, [analytics]);
 
 
 
@@ -490,7 +461,8 @@ export const AdminDashboard = () => {
   </div>
 
   {/* MAP */}
-  <div
+  <LazyViewport
+    minHeight="350px"
     className="
       relative
       flex-1
@@ -501,6 +473,11 @@ export const AdminDashboard = () => {
 
       overflow-hidden
     "
+    fallback={
+      <div className="flex items-center justify-center w-full h-full bg-gray-100 dark:bg-gray-800 rounded-lg text-gray-400 text-sm">
+        Loading map...
+      </div>
+    }
   >
     {/* CLEAN OVERLAY */}
     <div
@@ -560,7 +537,7 @@ export const AdminDashboard = () => {
           );
         })}
     </MapContainer>
-  </div>
+  </LazyViewport>
 </Card>
 
       {/* Employees Table */}
@@ -694,7 +671,7 @@ export const AdminDashboard = () => {
                       hub.city?.toLowerCase().includes(searchHubTerm.toLowerCase())
                     )
                     .map((hub: any) => {
-                      const hubEmployeeCount = allEmployees.filter((emp: any) => emp.hub === hub.id).length;
+                      const hubEmployeeCount = hub.employee_count ?? 0;
                       return (
                         <tr key={hub.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                           <td className="px-3 md:px-4 py-2 md:py-3 font-semibold text-gray-900 dark:text-white">{hub.name}</td>

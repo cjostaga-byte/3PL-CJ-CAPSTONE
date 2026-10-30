@@ -13,7 +13,7 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from django.conf import settings
 from django.db import models
-from django.db.models import Count, Prefetch
+from django.db.models import Count, Prefetch, Q
 from django.http import HttpResponse, Http404
 import os
 import json
@@ -34,6 +34,42 @@ class LargeResultsSetPagination(PageNumberPagination):
     page_size = 100
     page_size_query_param = 'page_size'
     max_page_size = 500
+
+
+class FlexibleEmployeePagination(PageNumberPagination):
+    """
+    Flexible pagination for EmployeeViewSet:
+    - If `page` or `page_size` query param is provided: returns paginated { count, total_pages, results }.
+    - If `page` is NOT provided (legacy unpaginated callers): returns unpaginated list for 100% backward compatibility.
+    - If `paginate=false` or `page_size=all`: explicitly disables pagination for exports.
+    """
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+    def paginate_queryset(self, queryset, request, view=None):
+        if request.query_params.get('paginate') == 'false' or request.query_params.get('page_size') == 'all':
+            return None
+        if 'page' in request.query_params or 'page_size' in request.query_params:
+            return super().paginate_queryset(queryset, request, view=view)
+        return None
+
+    def get_paginated_response(self, data):
+        total_pages = self.page.paginator.num_pages if hasattr(self, 'page') and self.page else 1
+        try:
+            next_link = self.get_next_link()
+            prev_link = self.get_previous_link()
+        except Exception:
+            next_link = None
+            prev_link = None
+        return Response({
+            'count': self.page.paginator.count,
+            'total_pages': total_pages,
+            'current_page': self.page.number if hasattr(self, 'page') and self.page else 1,
+            'next': next_link,
+            'previous': prev_link,
+            'results': data
+        })
 
 
 
@@ -179,7 +215,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     queryset = Employee.objects.all()
     permission_classes = [IsAuthenticated]  # Require login for updates
     parser_classes = [MultiPartParser, FormParser, JSONParser]
-    pagination_class = None
+    pagination_class = FlexibleEmployeePagination
     
     def get_serializer_class(self):
         if self.action == 'create':
@@ -316,7 +352,7 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def get_queryset(self):
-        queryset = Employee.objects.all().select_related('hub', 'user')
+        queryset = Employee.objects.all().select_related('hub', 'user').order_by('-id')
         if getattr(self, 'action', None) == 'list':
             queryset = queryset.prefetch_related(
                 Prefetch(
@@ -335,9 +371,40 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         status_filter = self.request.query_params.get('status')
         if status_filter:
             queryset = queryset.filter(status=status_filter)
+        # Tab-based filtering (current vs resigned)
+        tab = self.request.query_params.get('tab', '').strip().lower()
+        if tab == 'resigned':
+            queryset = queryset.filter(status__in=['Resign', 'Resigned'])
+        elif tab == 'current':
+            queryset = queryset.exclude(status__in=['Resign', 'Resigned'])
+
+        # Server-side search across multiple fields
+        search = self.request.query_params.get('search', '').strip()
+        if search:
+            queryset = queryset.filter(
+                Q(firstname__icontains=search) |
+                Q(lastname__icontains=search) |
+                Q(employee_id__icontains=search) |
+                Q(position__icontains=search)
+            )
+
         employment_type = self.request.query_params.get('employment_type')
         if employment_type:
             queryset = queryset.filter(employment_type=employment_type)
+
+        can_login = self.request.query_params.get('can_login')
+        if can_login is not None:
+            if can_login.lower() in ('true', '1'):
+                queryset = queryset.filter(can_login=True)
+            elif can_login.lower() in ('false', '0'):
+                queryset = queryset.filter(can_login=False)
+
+        is_active = self.request.query_params.get('is_active')
+        if is_active is not None:
+            if is_active.lower() in ('true', '1'):
+                queryset = queryset.filter(is_active=True)
+            elif is_active.lower() in ('false', '0'):
+                queryset = queryset.filter(is_active=False)
         # Role inclusion/exclusion filters
         role = self.request.query_params.get('role')
         exclude_role = self.request.query_params.get('exclude_role')
@@ -356,6 +423,42 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         except Exception:
             pass
         return queryset
+
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        """Return quick counts for employee tabs without serializing full records"""
+        qs = apply_hr_hub_filter(Employee.objects.all(), request.user, hub_field='hub')
+        hub_id = request.query_params.get('hub_id')
+        if hub_id:
+            try:
+                qs = qs.filter(hub_id=int(hub_id))
+            except (ValueError, TypeError):
+                pass
+        user_employee = getattr(request.user, 'employee', None)
+        if user_employee and getattr(user_employee, 'role', '').lower() == 'hr':
+            qs = qs.exclude(role__iexact='admin')
+
+        resigned_count = qs.filter(status__in=['Resign', 'Resigned']).count()
+        total_count = qs.count()
+        current_count = total_count - resigned_count
+        active_count = qs.filter(status='Active').count()
+        awol_count = qs.filter(status='AWOL').count()
+        blacklist_count = qs.filter(status='Blacklist').count()
+        locked_count = qs.filter(can_login=False).count()
+        active_login_count = qs.filter(is_active=True, can_login=True).count()
+        deactivated_count = qs.filter(is_active=False).count()
+
+        return Response({
+            'total': total_count,
+            'current': current_count,
+            'resigned': resigned_count,
+            'active': active_count,
+            'awol': awol_count,
+            'blacklist': blacklist_count,
+            'locked': locked_count,
+            'active_users': active_login_count,
+            'deactivated': deactivated_count,
+        })
 
     @action(detail=False, methods=['post'])
     def bulk_toggle_login(self, request):

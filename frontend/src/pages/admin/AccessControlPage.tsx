@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Card, Badge, LoadingSpinner, EmptyState } from '@/components/common';
 import { SkeletonTable } from '@/components/Skeleton';
 import { EmployeeAccessControlModal } from '@/components/EmployeeAccessControlModal';
-import { useGetEmployees, useGetActivityLogs, useGetSecurityAlerts } from '@/hooks/useQueries';
+import { useGetEmployees, useGetEmployeeSummary, useGetHubs, useGetActivityLogs, useGetSecurityAlerts } from '@/hooks/useQueries';
 import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { normalizeApiResponse } from '@/utils/apiResponseHandler';
 import { Sidebar } from '@/components/Sidebar';
@@ -14,14 +14,44 @@ export const AccessControlPage = () => {
   const [statusFilter, setStatusFilter] = useState('All');
   const [hubFilter, setHubFilter] = useState('All');
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
-  
-  // Fetch data
-  const { data: employeesData, isLoading, refetch: refetchEmployees } = useGetEmployees();
+
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedSearch(searchTerm), 300);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
+  const { data: hubsData } = useGetHubs();
+  const rawHubs = normalizeApiResponse(hubsData) || [];
+  const { data: summaryData } = useGetEmployeeSummary();
+  const summary: any = Array.isArray(summaryData) ? null : summaryData;
+
+  const employeeParams = useMemo(() => {
+    const p: Record<string, any> = {
+      page: currentPage,
+      page_size: itemsPerPage,
+    };
+    if (debouncedSearch) p.search = debouncedSearch;
+    if (roleFilter !== 'All') p.role = roleFilter;
+    if (hubFilter !== 'All') {
+      const matched = rawHubs.find((h: any) => h.name === hubFilter);
+      if (matched) p.hub_id = matched.id;
+    }
+    if (statusFilter === 'Active') {
+      p.is_active = 'true';
+    } else if (statusFilter === 'Deactivated') {
+      p.is_active = 'false';
+    }
+    return p;
+  }, [currentPage, debouncedSearch, roleFilter, hubFilter, statusFilter, rawHubs]);
+
+  // Fetch paginated data
+  const { data: employeesData, isLoading, refetch: refetchEmployees } = useGetEmployees(employeeParams);
   const { data: activityLogsData } = useGetActivityLogs({ limit: 10 });
   const { data: securityAlertsData } = useGetSecurityAlerts();
 
@@ -40,80 +70,30 @@ export const AccessControlPage = () => {
     handleModalClose();
   };
 
-  // Keep fetched data to avoid unused warnings (even if not shown)
-  const employees: any[] = Array.isArray(
-  normalizeApiResponse(employeesData)
-)
-  ? normalizeApiResponse(employeesData)
-  : [];
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const activityLogs = normalizeApiResponse(activityLogsData);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const securityAlerts = normalizeApiResponse(securityAlertsData);
 
-  // Get unique roles and hubs for filters
-  const roles = useMemo<string[]>(() => {
-  const uniqueRoles = new Set<string>();
+  const roles = ['All', 'Admin', 'HR', 'Employee', 'Rider', 'Driver'];
+  const hubs = useMemo(() => ['All', ...rawHubs.map((h: any) => h.name)], [rawHubs]);
 
-  employees.forEach((emp: any) => {
-    if (emp.role) {
-      uniqueRoles.add(String(emp.role));
-    }
-  });
+  // Calculate stats from server summary
+  const totalUsers = summary?.total ?? 0;
+  const activeUsers = summary?.active_users ?? summary?.active ?? 0;
+  const lockedAccounts = summary?.locked ?? 0;
+  const blacklistedUsers = summary?.deactivated ?? summary?.blacklist ?? 0;
 
-  return ['All', ...Array.from(uniqueRoles)];
-}, [employees]);
-
-  
-  const hubs = useMemo<string[]>(() => {
-  const uniqueHubs = new Set<string>();
-
-  employees.forEach((emp: any) => {
-    if (emp.hub_name) {
-      uniqueHubs.add(String(emp.hub_name));
-    }
-  });
-
-  return ['All', ...Array.from(uniqueHubs)];
-}, [employees]);
-  // Calculate stats
-  const totalUsers = employees.length;
-  const activeUsers = employees.filter((emp: any) => emp.is_active && emp.can_login).length;
-  const lockedAccounts = employees.filter((emp: any) => !emp.can_login).length;
-  const blacklistedUsers = employees.filter((emp: any) => !emp.is_active).length;
-
-  // Filter employees based on search and filters
-  const filteredEmployees = useMemo(() => {
-    return employees.filter((emp: any) => {
-      const matchesSearch =
-        !searchTerm ||
-        emp.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        emp.employee_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        emp.jtp_code?.toLowerCase().includes(searchTerm.toLowerCase());
-
-      const matchesRole = roleFilter === 'All' || emp.role === roleFilter;
-
-      const matchesStatus =
-        statusFilter === 'All' ||
-        (statusFilter === 'Active' && emp.is_active) ||
-        (statusFilter === 'Deactivated' && !emp.is_active);
-
-      const matchesHub = hubFilter === 'All' || emp.hub_name === hubFilter;
-
-      return matchesSearch && matchesRole && matchesStatus && matchesHub;
-    });
-  }, [employees, searchTerm, roleFilter, statusFilter, hubFilter]);
-  
   // Reset pagination when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, roleFilter, statusFilter, hubFilter]);
+  }, [debouncedSearch, roleFilter, statusFilter, hubFilter]);
 
-  const totalPages = Math.ceil(filteredEmployees.length / itemsPerPage);
-  const paginatedEmployees = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    return filteredEmployees.slice(start, start + itemsPerPage);
-  }, [filteredEmployees, currentPage]);
+  const employees = employeesData?.results || (Array.isArray(employeesData) ? employeesData : []);
+  const totalCount = employeesData?.count ?? employees.length;
+  const totalPages = employeesData?.total_pages ?? Math.ceil(totalCount / itemsPerPage) ?? 1;
+  const paginatedEmployees = employees;
+  const filteredEmployees = employees;
 
   if (isLoading) {
     return (

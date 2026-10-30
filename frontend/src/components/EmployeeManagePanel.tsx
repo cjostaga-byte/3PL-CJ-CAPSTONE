@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Card, Button, Badge, LoadingSpinner, EmptyState } from './common';
 import { SkeletonTable } from './Skeleton';
-import { useGetEmployees, useDeleteEmployee, useBulkToggleLogin } from '@/hooks/useQueries';
+import { useGetEmployees, useDeleteEmployee, useBulkToggleLogin, useGetEmployeeSummary } from '@/hooks/useQueries';
 import { useToast } from '@/hooks/useToast';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Trash2, Eye, Lock, Unlock, Users, UserX } from 'lucide-react';
@@ -46,68 +46,67 @@ interface Employee {
 export const EmployeeManagePanel = (props: EmployeeManagePanelProps) => {
   const navigate = useNavigate();
   const { user, canDeleteEmployees } = useAuth();
-  const { data, isLoading } = useGetEmployees();
-  const deleteMutation = useDeleteEmployee();
-  const bulkToggleMutation = useBulkToggleLogin();
-  const { success, error } = useToast();
-
   const [employeeTab, setEmployeeTab] = useState<'current' | 'resigned'>('current');
   const [selectedEmployees, setSelectedEmployees] = useState<number[]>([]);
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, employeeId: 0 });
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  const rawEmployees: Employee[] = normalizeApiResponse(data) || [];
-
-  // Calculate live counts
-  const currentCount = rawEmployees.filter(
-    (emp) => emp.status?.toLowerCase() !== 'resign' && emp.status?.toLowerCase() !== 'resigned'
-  ).length;
-
-  const resignedCount = rawEmployees.filter(
-    (emp) => emp.status?.toLowerCase() === 'resign' || emp.status?.toLowerCase() === 'resigned'
-  ).length;
-
-  // Separate employees by active tab
-  let employees = rawEmployees.filter((emp) => {
-    const isResigned = emp.status?.toLowerCase() === 'resign' || emp.status?.toLowerCase() === 'resigned';
-    return employeeTab === 'resigned' ? isResigned : !isResigned;
-  });
-
-  // Apply status filter if provided (for current tab)
-  if (employeeTab === 'current' && props.statusFilter && props.statusFilter !== 'All') {
-    employees = employees.filter((emp: Employee) => emp.status === props.statusFilter);
-  }
-
-  // Apply search filter if provided
-  if (props.searchTerm && props.searchTerm.trim() !== '') {
-    const q = props.searchTerm.trim().toLowerCase();
-    employees = employees.filter((emp: Employee) => (
-      (emp.full_name || '').toLowerCase().includes(q) ||
-      (emp.employee_id || '').toLowerCase().includes(q) ||
-      (emp.position || '').toLowerCase().includes(q)
-    ));
-  }
-
-  // Automatically disable login for Blacklist and Resign employees
-  employees = employees.map((emp: Employee) => {
-    if ((emp.status === 'Blacklist' || emp.status === 'Resign' || emp.status === 'Resigned') && emp.can_login) {
-      return { ...emp, can_login: false };
-    }
-    return emp;
-  });
+  // Debounce search term from props
+  const [debouncedSearch, setDebouncedSearch] = useState(props.searchTerm || '');
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(props.searchTerm || '');
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [props.searchTerm]);
 
   // Reset to page 1 and clear selections when search, tab, or status filter changes
   useEffect(() => {
     setCurrentPage(1);
     setSelectedEmployees([]);
-  }, [props.searchTerm, props.statusFilter, employeeTab]);
+  }, [debouncedSearch, props.statusFilter, employeeTab, props.hubId]);
 
-  // Pagination calculation
-  const totalPages = Math.ceil(employees.length / itemsPerPage);
+  // Fetch summary counts for tabs
+  const { data: summaryData } = useGetEmployeeSummary(props.hubId ? { hub_id: props.hubId } : undefined);
+  const currentCount = summaryData?.current ?? 0;
+  const resignedCount = summaryData?.resigned ?? 0;
+
+  // Server-paginated query parameters
+  const employeeParams = useMemo(() => {
+    const params: Record<string, any> = {
+      page: currentPage,
+      page_size: itemsPerPage,
+      tab: employeeTab,
+    };
+    if (props.hubId) params.hub_id = props.hubId;
+    if (employeeTab === 'current' && props.statusFilter && props.statusFilter !== 'All') {
+      params.status = props.statusFilter;
+    }
+    if (debouncedSearch.trim()) {
+      params.search = debouncedSearch.trim();
+    }
+    return params;
+  }, [currentPage, itemsPerPage, employeeTab, props.hubId, props.statusFilter, debouncedSearch]);
+
+  const { data, isLoading } = useGetEmployees(employeeParams);
+  const deleteMutation = useDeleteEmployee();
+  const bulkToggleMutation = useBulkToggleLogin();
+  const { success, error } = useToast();
+
+  const rawEmployees: Employee[] = normalizeApiResponse(data) || [];
+  const totalCount = typeof (data as any)?.count === 'number' ? (data as any).count : rawEmployees.length;
+  const totalPages = typeof (data as any)?.total_pages === 'number' ? (data as any).total_pages : Math.max(1, Math.ceil(totalCount / itemsPerPage));
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedEmployees = employees.slice(startIndex, endIndex);
+
+  // Automatically disable login for Blacklist and Resign employees
+  const paginatedEmployees = rawEmployees.map((emp: Employee) => {
+    if ((emp.status === 'Blacklist' || emp.status === 'Resign' || emp.status === 'Resigned') && emp.can_login) {
+      return { ...emp, can_login: false };
+    }
+    return emp;
+  });
+  const employees = paginatedEmployees;
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -382,10 +381,10 @@ export const EmployeeManagePanel = (props: EmployeeManagePanelProps) => {
               </div>
 
               {/* PAGINATION CONTROLS */}
-              {employees.length > itemsPerPage && (
+              {totalCount > itemsPerPage && (
                 <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
                   <div className="text-xs text-gray-600 dark:text-gray-400">
-                    Showing {startIndex + 1} to {Math.min(endIndex, employees.length)} of {employees.length} employees
+                    Showing {startIndex + 1} to {Math.min(startIndex + paginatedEmployees.length, totalCount)} of {totalCount} employees
                   </div>
                   <div className="flex gap-2">
                     <Button
@@ -406,7 +405,7 @@ export const EmployeeManagePanel = (props: EmployeeManagePanelProps) => {
                       variant="secondary"
                       size="sm"
                       onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-                      disabled={currentPage === totalPages}
+                      disabled={currentPage >= totalPages}
                       className="text-xs py-1.5 h-auto px-3"
                     >
                       Next →

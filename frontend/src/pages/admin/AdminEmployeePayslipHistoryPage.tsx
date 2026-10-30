@@ -4,7 +4,7 @@ import { Card, Badge, LoadingSpinner, EmptyState } from '@/components/common';
 import { SkeletonTable } from '@/components/Skeleton';
 import { Sidebar } from '@/components/Sidebar';
 import { PayslipDetailModal } from '@/components/PayslipDetailModal';
-import { useGetPayroll, useGetEmployees } from '@/hooks/useQueries';
+import { useGetPayroll, useGetEmployee } from '@/hooks/useQueries';
 import { ArrowLeft, FileText, Calendar } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { normalizeApiResponse } from '@/utils/apiResponseHandler';
@@ -32,14 +32,14 @@ export const AdminEmployeePayslipHistoryPage = () => {
 
   const prefix = location.pathname.startsWith('/admin') ? '/admin' : '/hr';
 
-  const { data: payrollData, isLoading: payrollLoading } = useGetPayroll();
-  const { data: employeesData, isLoading: empLoading } = useGetEmployees();
+  const empIdNum = id ? parseInt(id, 10) : 0;
+  const { data: payrollData, isLoading: payrollLoading } = useGetPayroll(id ? { employee_id: id } : undefined);
+  const { data: employeeData, isLoading: empLoading } = useGetEmployee(empIdNum);
 
-  const allPayroll = normalizeApiResponse(payrollData);
-  const allEmployees = normalizeApiResponse(employeesData);
+  const employee: any = employeeData && !Array.isArray(employeeData) ? employeeData : null;
+  const allPayroll = normalizeApiResponse(payrollData) || [];
 
-  const employee = allEmployees.find((e: any) => String(e.id) === String(id));
-  const employeePayslips = allPayroll
+  const employeePayslips = (Array.isArray(allPayroll) ? allPayroll : [])
     .filter((p: any) => {
       const empId = p.employee || p.employee_id;
       return String(empId) === String(id) || (typeof empId === 'object' && String(empId?.id) === String(id));

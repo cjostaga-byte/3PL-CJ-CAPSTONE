@@ -39,6 +39,15 @@ export const useGetEmployee = (id: number) => {
   });
 };
 
+export const useGetEmployeeSummary = (params?: Record<string, any>) => {
+  return useQuery({
+    queryKey: ['employee_summary', params],
+    queryFn: () => employeeAPI.getEmployeeSummary(params),
+    staleTime: 2 * 60 * 1000,
+    retry: 1,
+  });
+};
+
 export const useCreateEmployee = () => {
   const queryClient = useQueryClient();
   return useMutation({

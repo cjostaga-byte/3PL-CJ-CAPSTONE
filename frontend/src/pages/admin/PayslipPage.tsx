@@ -3,7 +3,7 @@ import { Card, Badge, LoadingSpinner, EmptyState } from '@/components/common';
 import { SkeletonTable, SkeletonStatCard } from '@/components/Skeleton';
 import { Sidebar } from '@/components/Sidebar';
 import { PayslipDetailModal } from '@/components/PayslipDetailModal';
-import { useGetPayroll, useGetHubs, useGetEmployees } from '@/hooks/useQueries';
+import { useGetPayroll, useGetHubs, useGetEmployeeSummary } from '@/hooks/useQueries';
 import { Download, Search, History } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import AdminMobileProfile from '@/components/AdminMobileProfile';
@@ -108,26 +108,11 @@ export const PayslipPage = () => {
 
   const { data: payrollData, isLoading: payrollLoading } = useGetPayroll(payrollParams);
   const { data: hubsData, isLoading: hubsLoading } = useGetHubs();
-  // Only fetch employees if we have payroll data (for display purposes)
-  const { data: employeesData, isLoading: employeesLoading } = useGetEmployees();
+  const { data: summaryData } = useGetEmployeeSummary();
 
-  const payrollRaw = normalizeApiResponse(payrollData) || [];
+  const payroll = normalizeApiResponse(payrollData) || [];
   const hubs = normalizeApiResponse(hubsData) || [];
-  const allEmployees = normalizeApiResponse(employeesData) || [];
-
-  // Exclude HR and Admin users from payroll counts and tables
-  const NON_EMPLOYEE_ROLES = ['hr', 'admin'];
-  const employees = allEmployees.filter((e: any) => {
-    try { return !NON_EMPLOYEE_ROLES.includes((e.role || '').toString().toLowerCase()); }
-    catch { return true; }
-  });
-
-  // Build a set of excluded IDs (HR + Admin) to filter payroll records
-  const excludedIds = useMemo(() => new Set(
-    allEmployees
-      .filter((e: any) => NON_EMPLOYEE_ROLES.includes((e.role || '').toString().toLowerCase()))
-      .map((e: any) => String(e.id))
-  ), [allEmployees]);
+  const employeeSummary: any = Array.isArray(summaryData) ? null : summaryData;
 
   const managedHubIds = useMemo(() => {
     if (!isHR || !employee?.hr_permissions?.managed_hubs) return null;
@@ -141,28 +126,12 @@ export const PayslipPage = () => {
     return hubs;
   }, [hubs, isHR, managedHubIds]);
 
-  const payroll = useMemo(() => {
-    let filtered = (payrollRaw || []).filter((p: any) => {
-      const empId = p.employee ? (typeof p.employee === 'object' ? String(p.employee?.id) : String(p.employee)) : String(p.employee_id || '');
-      return !excludedIds.has(empId);
-    });
-    if (isHR && managedHubIds) {
-      filtered = filtered.filter((p: any) => {
-        const empId = p.employee ? (typeof p.employee === 'object' ? p.employee?.id : p.employee) : p.employee_id;
-        const emp = allEmployees.find((e: any) => String(e.id) === String(empId));
-        const hubId = emp ? (typeof emp.hub === 'object' ? emp.hub?.id : emp.hub) : null;
-        return managedHubIds.includes(hubId);
-      });
-    }
-    return filtered;
-  }, [payrollRaw, excludedIds, isHR, managedHubIds, allEmployees]);
-
   // Re-use current payroll for modal history — avoids duplicate unpaginated network requests
   const allPayroll = payroll;
 
   // Calculate stats
   const stats = useMemo(() => {
-    const totalEmployees = employees.length;
+    const totalEmployees = employeeSummary?.current ?? employeeSummary?.total ?? 0;
     const approved = (payroll || []).filter((p: any) => (p.status || '').toString().toLowerCase() === 'approved').length;
     const pending = (payroll || []).filter((p: any) => (p.status || '').toString().toLowerCase() === 'pending' || (p.status || '').toString().toLowerCase() === 'processing').length;
     const drafts = (payroll || []).filter((p: any) => (p.status || '').toString().toLowerCase() === 'draft').length;
@@ -173,7 +142,7 @@ export const PayslipPage = () => {
       pending,
       drafts,
     };
-  }, [payroll, employees]);
+  }, [payroll, employeeSummary]);
 
   // Get unique years from payroll data - only from current filtered set
   const years = useMemo(() => {
@@ -354,7 +323,7 @@ export const PayslipPage = () => {
     }
   };
 
-  if (payrollLoading || hubsLoading || employeesLoading) {
+  if (payrollLoading || hubsLoading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-dark-bg p-4 lg:p-6 lg:ml-64 space-y-6">
         <SkeletonStatCard count={4} />

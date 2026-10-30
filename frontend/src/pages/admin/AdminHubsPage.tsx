@@ -886,7 +886,11 @@ export const AdminHubsPage = () => {
   const mapRef = useRef<L.Map | null>(null);
 
   const { data, isLoading } = useGetHubs();
-  const { data: employeesData } = useGetEmployees();
+  const selectedHubId = hubState.selectedHub?.id;
+  const { data: employeesData } = useGetEmployees(
+    selectedHubId ? { hub_id: selectedHubId } : undefined,
+    { enabled: !!selectedHubId }
+  );
   const { data: liveLocationsData } = useGetLiveLocations();
 
   const hubs: Hub[] = normalizeApiResponse(data);
@@ -1149,8 +1153,14 @@ export const AdminHubsPage = () => {
   }, [filteredHubs, hubsCurrentPage]);
 
   const getHubEmployeeCount = useCallback(
-    (hubId: number) => allEmployees.filter((emp: Employee) => emp.hub === hubId).length,
-    [allEmployees]
+    (hubId: number) => {
+      const h = hubs.find((hub: any) => hub.id === hubId);
+      if (h && typeof (h as any).employee_count === 'number') {
+        return (h as any).employee_count;
+      }
+      return allEmployees.filter((emp: Employee) => emp.hub === hubId).length;
+    },
+    [hubs, allEmployees]
   );
 
   // ======================================
@@ -1161,7 +1171,6 @@ export const AdminHubsPage = () => {
     if (!hubState.selectedHub) return [];
     return allEmployees.filter(
       (emp: Employee) =>
-        emp.hub === hubState.selectedHub?.id &&
         (emp.full_name?.toLowerCase().includes(employeeSearch.toLowerCase()) ||
           emp.position?.toLowerCase().includes(employeeSearch.toLowerCase()))
     );

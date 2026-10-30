@@ -83,7 +83,7 @@ export const AttendancePage = () => {
   // Fetch data with server-side date filter to prevent loading thousands of records
   const { data: attendanceData, isLoading: attendanceLoading } = useGetAttendance({ date: dateFilter });
   const { data: hubsData, isLoading: hubsLoading } = useGetHubs();
-  const { data: employeesData, isLoading: employeesLoading } = useGetEmployees();
+  const { data: employeesData, isLoading: employeesLoading } = useGetEmployees({ tab: 'current' });
 
   const attendance = normalizeApiResponse(attendanceData);
   const rawHubs = normalizeApiResponse(hubsData);
