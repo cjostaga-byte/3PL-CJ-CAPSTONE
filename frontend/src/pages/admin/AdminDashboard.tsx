@@ -4,9 +4,9 @@ import { SkeletonDashboard, SkeletonTable } from '@/components/Skeleton';
 import { useGetEmployees, useGetHubs, useGetDashboardAnalytics } from '@/hooks/useQueries';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { useAuth } from '@/hooks/useAuth';
-import { Search, X, User, Phone, Briefcase, Shield, Clock, Landmark, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, X, User, Phone, Briefcase, Shield, Clock, Landmark, ChevronLeft, ChevronRight, Navigation } from 'lucide-react';
 import { normalizeApiResponse } from '@/utils/apiResponseHandler';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import HubsEmployeeChart from '@/components/HubsEmployeeChart';
@@ -20,13 +20,26 @@ import { LazyViewport } from '@/components/LazyViewport';
 const FitBoundsComponent = ({
   mapHubs,
   getCoords,
+  routeCoordinates,
 }: {
   mapHubs: any[];
   getCoords: (hub: any) => [number, number];
+  routeCoordinates?: [number, number][] | null;
 }) => {
   const map = useMap();
 
   useEffect(() => {
+    if (routeCoordinates && routeCoordinates.length > 0) {
+      const bounds = L.latLngBounds(routeCoordinates);
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, {
+          padding: [50, 50],
+          maxZoom: 15,
+        });
+      }
+      return;
+    }
+
     if (!mapHubs?.length) return;
 
     const bounds = L.latLngBounds(
@@ -38,7 +51,7 @@ const FitBoundsComponent = ({
         padding: [50, 50],
       });
     }
-  }, [map, mapHubs, getCoords]);
+  }, [map, mapHubs, getCoords, routeCoordinates]);
 
   return null;
 };
@@ -180,6 +193,80 @@ export const AdminDashboard = () => {
       }),
     []
   );
+
+  const userIcon = useMemo(
+    () =>
+      L.divIcon({
+        className: '',
+        html: `<div style="width:16px;height:16px;background:#3b82f6;border-radius:999px;border:3px solid white;box-shadow:0 4px 12px rgba(59,130,246,.4);"></div>`,
+        iconSize: [16, 16],
+      }),
+    []
+  );
+
+  const [selectedMapHub, setSelectedMapHub] = useState<any | null>(null);
+  const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
+  const [routeCoordinates, setRouteCoordinates] = useState<[number, number][] | null>(null);
+  const [isRouting, setIsRouting] = useState(false);
+
+  const handleGetDashboardRoute = (hubToRoute?: any) => {
+    const targetHub = hubToRoute || selectedMapHub;
+    if (!targetHub) return;
+    const dest = getHubCoordinates(targetHub);
+
+    const computeAndSetRoute = async (startLat: number, startLon: number) => {
+      setIsRouting(true);
+      try {
+        const url = `https://router.project-osrm.org/route/v1/driving/${startLon},${startLat};${dest[1]},${dest[0]}?steps=true&geometries=geojson&overview=full`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.code === 'Ok' && data.routes?.[0]?.geometry?.coordinates) {
+          const coords: [number, number][] = data.routes[0].geometry.coordinates.map(
+            ([lon, lat]: [number, number]) => [lat, lon]
+          );
+          setRouteCoordinates(coords);
+        } else {
+          setRouteCoordinates([
+            [startLat, startLon],
+            [dest[0], dest[1]],
+          ]);
+        }
+      } catch {
+        setRouteCoordinates([
+          [startLat, startLon],
+          [dest[0], dest[1]],
+        ]);
+      } finally {
+        setIsRouting(false);
+      }
+    };
+
+    if (userLocation) {
+      computeAndSetRoute(userLocation[0], userLocation[1]);
+      return;
+    }
+
+    if (navigator.geolocation) {
+      setIsRouting(true);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const loc: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+          setUserLocation(loc);
+          computeAndSetRoute(loc[0], loc[1]);
+        },
+        () => {
+          const defaultLoc: [number, number] = [14.5995, 120.9842];
+          setUserLocation(defaultLoc);
+          computeAndSetRoute(defaultLoc[0], defaultLoc[1]);
+        },
+        { enableHighAccuracy: true, timeout: 6000 }
+      );
+    } else {
+      const defaultLoc: [number, number] = [14.5995, 120.9842];
+      setUserLocation(defaultLoc);
+      computeAndSetRoute(defaultLoc[0], defaultLoc[1]);
+    }
+  };
 
   const formatSelectedEmployeeAddress = (emp: any) => {
     if (!emp) return 'N/A';
@@ -531,7 +618,23 @@ export const AdminDashboard = () => {
       <FitBoundsComponent
         mapHubs={hubs}
         getCoords={getHubCoordinates}
+        routeCoordinates={routeCoordinates}
       />
+
+      {userLocation && (
+        <Marker position={userLocation} icon={userIcon}>
+          <Popup>Your Location</Popup>
+        </Marker>
+      )}
+
+      {routeCoordinates && (
+        <Polyline
+          positions={routeCoordinates}
+          color="#2563eb"
+          weight={5}
+          opacity={0.85}
+        />
+      )}
 
       {hubs
         .filter((hub: any) => {
@@ -550,6 +653,9 @@ export const AdminDashboard = () => {
               key={hub.id}
               position={[lat, lng]}
               icon={hubIcon}
+              eventHandlers={{
+                click: () => setSelectedMapHub(hub),
+              }}
             >
               <Popup>
                 <div className="p-1 min-w-[150px]">
@@ -563,12 +669,53 @@ export const AdminDashboard = () => {
                       {hub.employee_count} employees
                     </p>
                   )}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedMapHub(hub);
+                      handleGetDashboardRoute(hub);
+                    }}
+                    disabled={isRouting}
+                    className="w-full mt-2 py-1.5 px-2 text-[11px] font-semibold text-white bg-gradient-to-r from-red-600 to-rose-600 rounded-lg flex items-center justify-center gap-1 shadow-sm hover:opacity-90 disabled:opacity-50 transition-opacity cursor-pointer"
+                  >
+                    <Navigation size={12} className={isRouting ? 'animate-spin' : ''} />
+                    <span>{isRouting ? 'Routing...' : 'Get Location'}</span>
+                  </button>
                 </div>
               </Popup>
             </Marker>
           );
         })}
     </MapContainer>
+
+    {/* FLOATING GET LOCATION BUTTON ON LOWER RIGHT OF DASHBOARD MAP */}
+    {selectedMapHub && (
+      <div className="absolute bottom-4 right-4 z-[1000] flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => handleGetDashboardRoute()}
+          disabled={isRouting}
+          className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-500 hover:from-red-700 hover:to-rose-700 text-white text-xs sm:text-sm font-bold flex items-center gap-2 shadow-2xl shadow-red-600/50 hover:shadow-red-600/70 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all border border-white/25 cursor-pointer backdrop-blur-md"
+        >
+          <Navigation size={16} className={`text-white fill-white ${isRouting ? 'animate-spin' : ''}`} />
+          <span>{isRouting ? 'Routing...' : 'Get Location'}</span>
+        </button>
+        {routeCoordinates && (
+          <button
+            type="button"
+            onClick={() => {
+              setRouteCoordinates(null);
+              setSelectedMapHub(null);
+            }}
+            className="h-10 px-3.5 rounded-2xl bg-white/95 dark:bg-[#0b1220]/95 hover:bg-gray-100 dark:hover:bg-white/10 text-gray-700 dark:text-gray-200 text-xs font-semibold flex items-center gap-1.5 shadow-xl border border-gray-200 dark:border-white/10 backdrop-blur-md transition-all cursor-pointer"
+          >
+            <X size={14} />
+            <span>Clear Route</span>
+          </button>
+        )}
+      </div>
+    )}
   </LazyViewport>
 </Card>
 

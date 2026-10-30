@@ -47,6 +47,7 @@ import {
   Marker,
   Polyline,
   Popup,
+  useMap,
 } from 'react-leaflet';
 
 import L from 'leaflet';
@@ -210,13 +211,40 @@ async function fetchOsrmProfile(
   endLat: number,
   endLon: number
 ): Promise<ParsedOsrmRoute | null> {
-  const url =
-    `${OSRM_BASE}/${profile}/${startLon},${startLat};${endLon},${endLat}` +
-    `?steps=true&geometries=geojson&overview=full`;
-  const response = await fetch(url);
-  const data = await response.json();
-  return parseOsrmResponse(data, mode);
+  try {
+    const url =
+      `${OSRM_BASE}/${profile}/${startLon},${startLat};${endLon},${endLat}` +
+      `?steps=true&geometries=geojson&overview=full`;
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const data = await response.json();
+    return parseOsrmResponse(data, mode);
+  } catch {
+    return null;
+  }
 }
+
+const RouteFitter = ({
+  userLocation,
+  hubLocation,
+  coordinates,
+}: {
+  userLocation: [number, number] | null;
+  hubLocation: [number, number] | null;
+  coordinates?: [number, number][];
+}) => {
+  const map = useMap();
+  useEffect(() => {
+    if (coordinates && coordinates.length > 0) {
+      const bounds = L.latLngBounds(coordinates);
+      map.fitBounds(bounds, { padding: [60, 60], maxZoom: 15 });
+    } else if (userLocation && hubLocation) {
+      const bounds = L.latLngBounds([userLocation, hubLocation]);
+      map.fitBounds(bounds, { padding: [60, 60], maxZoom: 15 });
+    }
+  }, [coordinates, userLocation, hubLocation, map]);
+  return null;
+};
 
 // ======================================
 // SUB-COMPONENTS
@@ -1205,6 +1233,17 @@ export const AdminHubsPage = () => {
   // ROUTES
   // ======================================
 
+  const calculateDistanceM = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371e3;
+    const p1 = (lat1 * Math.PI) / 180;
+    const p2 = (lat2 * Math.PI) / 180;
+    const dp = ((lat2 - lat1) * Math.PI) / 180;
+    const dl = ((lon2 - lon1) * Math.PI) / 180;
+    const a = Math.sin(dp / 2) * Math.sin(dp / 2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return Math.round(R * c);
+  };
+
   const fetchRealRoute = async (
     startLat: number,
     startLon: number,
@@ -1218,20 +1257,52 @@ export const AdminHubsPage = () => {
         fetchOsrmProfile('cycling', 'cycling', startLat, startLon, endLat, endLon),
         fetchOsrmProfile('driving', 'driving', startLat, startLon, endLat, endLon),
       ]);
-      const bestRoute = car || riding || walking;
-      if (bestRoute) {
+      const best = car || riding || walking;
+      if (best && best.coordinates && best.coordinates.length > 0) {
         setRouteData({
-          walking: walking || bestRoute,
-          riding: riding || bestRoute,
-          car: car || bestRoute,
+          walking: walking || best,
+          riding: riding || best,
+          car: car || best,
         });
         setShowDirections(true);
       } else {
-        window.open(`https://www.google.com/maps/dir/?api=1&origin=${startLat},${startLon}&destination=${endLat},${endLon}`, '_blank');
+        const dist = calculateDistanceM(startLat, startLon, endLat, endLon);
+        const directRoute: ParsedOsrmRoute = {
+          coordinates: [
+            [startLat, startLon],
+            [endLat, endLon],
+          ],
+          distanceM: dist,
+          durationSec: Math.round(dist / (35 * 1000 / 3600)),
+          turns: [],
+          turnCount: 0,
+        };
+        setRouteData({
+          walking: directRoute,
+          riding: directRoute,
+          car: directRoute,
+        });
+        setShowDirections(true);
       }
     } catch (error) {
-      console.error(error);
-      window.open(`https://www.google.com/maps/dir/?api=1&origin=${startLat},${startLon}&destination=${endLat},${endLon}`, '_blank');
+      console.warn('Error fetching route, using straight polyline', error);
+      const dist = calculateDistanceM(startLat, startLon, endLat, endLon);
+      const directRoute: ParsedOsrmRoute = {
+        coordinates: [
+          [startLat, startLon],
+          [endLat, endLon],
+        ],
+        distanceM: dist,
+        durationSec: Math.round(dist / (35 * 1000 / 3600)),
+        turns: [],
+        turnCount: 0,
+      };
+      setRouteData({
+        walking: directRoute,
+        riding: directRoute,
+        car: directRoute,
+      });
+      setShowDirections(true);
     } finally {
       setLoadingRoute(false);
     }
@@ -1241,29 +1312,32 @@ export const AdminHubsPage = () => {
     if (!hubState.selectedHub) return;
     const coords = getHubCoordinates(hubState.selectedHub);
 
-    if (!userLocation) {
-      if (navigator.geolocation) {
-        setLoadingRoute(true);
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            const loc: [number, number] = [pos.coords.latitude, pos.coords.longitude];
-            setUserLocation(loc);
-            fetchRealRoute(loc[0], loc[1], coords[0], coords[1]);
-          },
-          (err) => {
-            console.warn('Geolocation failed or denied, opening in Google Maps', err);
-            setLoadingRoute(false);
-            window.open(`https://www.google.com/maps/dir/?api=1&destination=${coords[0]},${coords[1]}`, '_blank');
-          },
-          { enableHighAccuracy: true, timeout: 8000 }
-        );
-      } else {
-        window.open(`https://www.google.com/maps/dir/?api=1&destination=${coords[0]},${coords[1]}`, '_blank');
-      }
+    if (userLocation) {
+      fetchRealRoute(userLocation[0], userLocation[1], coords[0], coords[1]);
       return;
     }
 
-    fetchRealRoute(userLocation[0], userLocation[1], coords[0], coords[1]);
+    if (navigator.geolocation) {
+      setLoadingRoute(true);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const loc: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+          setUserLocation(loc);
+          fetchRealRoute(loc[0], loc[1], coords[0], coords[1]);
+        },
+        (err) => {
+          console.warn('Geolocation unavailable, defaulting to Manila', err);
+          const defaultLoc: [number, number] = [14.5995, 120.9842];
+          setUserLocation(defaultLoc);
+          fetchRealRoute(defaultLoc[0], defaultLoc[1], coords[0], coords[1]);
+        },
+        { enableHighAccuracy: true, timeout: 6000 }
+      );
+    } else {
+      const defaultLoc: [number, number] = [14.5995, 120.9842];
+      setUserLocation(defaultLoc);
+      fetchRealRoute(defaultLoc[0], defaultLoc[1], coords[0], coords[1]);
+    }
   };
 
   const handleMarkerClick = (hub: Hub) => {
@@ -1398,7 +1472,20 @@ export const AdminHubsPage = () => {
                             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
                             <p className="font-bold text-xs text-gray-900">{hub.name}</p>
                           </div>
-                          <p className="text-[11px] text-gray-600">{hub.address || hub.city || 'Delivery Center Location'}</p>
+                          <p className="text-[11px] text-gray-600 mb-2">{hub.address || hub.city || 'Delivery Center Location'}</p>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMarkerClick(hub);
+                              handleGetDirections();
+                            }}
+                            disabled={loadingRoute}
+                            className="w-full py-1.5 px-2 text-[11px] font-semibold text-white bg-gradient-to-r from-red-600 to-rose-600 rounded-lg flex items-center justify-center gap-1 shadow-sm hover:opacity-90 disabled:opacity-50 transition-opacity cursor-pointer"
+                          >
+                            <Navigation size={12} className={loadingRoute ? 'animate-spin' : ''} />
+                            <span>{loadingRoute ? 'Routing...' : 'Get Location'}</span>
+                          </button>
                         </div>
                       </Popup>
                     </Marker>
@@ -1451,12 +1538,20 @@ export const AdminHubsPage = () => {
                     );
                   })}
 
+                  {showDirections && (
+                    <RouteFitter
+                      userLocation={userLocation}
+                      hubLocation={hubState.selectedHub ? getHubCoordinates(hubState.selectedHub) : null}
+                      coordinates={routeData?.car?.coordinates}
+                    />
+                  )}
+
                   {showDirections && routeData?.car?.coordinates && (
                     <Polyline
                       positions={routeData.car.coordinates}
-                      color="#10b981"
-                      weight={4}
-                      opacity={0.8}
+                      color="#2563eb"
+                      weight={5}
+                      opacity={0.85}
                     />
                   )}
                 </MapContainer>
@@ -1564,6 +1659,36 @@ export const AdminHubsPage = () => {
                       </div>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* FLOATING "GET LOCATION" BUTTON ON LOWER RIGHT OF MAP */}
+              {hubState.selectedHub && (
+                <div
+                  className={`absolute ${
+                    showDirections ? 'bottom-20 md:bottom-24' : 'bottom-4'
+                  } right-4 z-[1000] flex items-center gap-2 transition-all duration-300`}
+                >
+                  <button
+                    onClick={handleGetDirections}
+                    disabled={loadingRoute}
+                    className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-500 hover:from-red-700 hover:to-rose-700 text-white text-xs sm:text-sm font-bold flex items-center gap-2 shadow-2xl shadow-red-600/50 hover:shadow-red-600/70 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all border border-white/25 cursor-pointer backdrop-blur-md"
+                  >
+                    <Navigation size={16} className={`text-white fill-white ${loadingRoute ? 'animate-spin' : ''}`} />
+                    <span>{loadingRoute ? 'Routing...' : 'Get Location'}</span>
+                  </button>
+                  {showDirections && (
+                    <button
+                      onClick={() => {
+                        setShowDirections(false);
+                        setRouteData(null);
+                      }}
+                      className="h-10 px-3.5 rounded-2xl bg-white/95 dark:bg-[#0b1220]/95 hover:bg-gray-100 dark:hover:bg-white/10 text-gray-700 dark:text-gray-200 text-xs font-semibold flex items-center gap-1.5 shadow-xl border border-gray-200 dark:border-white/10 backdrop-blur-md transition-all cursor-pointer"
+                    >
+                      <X size={14} />
+                      <span>Clear Route</span>
+                    </button>
+                  )}
                 </div>
               )}
               </div>
@@ -1774,7 +1899,7 @@ export const AdminHubsPage = () => {
                         ) : (
                           <>
                             <Navigation size={16} />
-                            Get Directions
+                            Get Location
                           </>
                         )}
                       </button>
