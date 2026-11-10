@@ -53,6 +53,7 @@ export const PredictionsPage: React.FC = () => {
   const [selectedHubFilter, setSelectedHubFilter] = useState<string>('all');
   const [selectedRiskFilter, setSelectedRiskFilter] = useState<string>('all');
   const [selectedEmployeeModal, setSelectedEmployeeModal] = useState<any | null>(null);
+  const [currentPage, setCurrentPage] = useState<number>(1);
 
   // Fetch full predictive suite
   const { data: overviewData, isLoading, isError, refetch, isFetching } = useGetPredictionsOverview(horizonDays);
@@ -75,6 +76,56 @@ export const PredictionsPage: React.FC = () => {
     });
   }, [attrition, searchTerm, selectedHubFilter, selectedRiskFilter]);
 
+  // Reset page when filters change
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedHubFilter, selectedRiskFilter]);
+
+  const pageSize = 10;
+  const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize));
+  const paginatedEmployees = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredEmployees.slice(start, start + pageSize);
+  }, [filteredEmployees, currentPage, pageSize]);
+
+  // Clean feature importance data for chart
+  const featureImportanceData = useMemo(() => {
+    if (!attrition?.global_feature_importance) return [];
+    return attrition.global_feature_importance.slice(0, 6).map((item: any) => ({
+      ...item,
+      label: item.label || item.feature || item.key,
+      importance: Number(item.importance ?? item.importance_pct ?? 0),
+    }));
+  }, [attrition]);
+
+  // Clean daily forecast data for chart
+  const dailyForecastData = useMemo(() => {
+    if (!leaveDemand?.daily_forecasts) return [];
+    return leaveDemand.daily_forecasts.map((d: any) => ({
+      ...d,
+      expected_leaves: Number(d.expected_leaves ?? d.predicted_leave_count ?? 0),
+    }));
+  }, [leaveDemand]);
+
+  // Clean hub leave demand data for chart
+  const hubLeaveData = useMemo(() => {
+    if (!leaveDemand?.hub_leave_demand) return [];
+    return leaveDemand.hub_leave_demand.map((h: any) => ({
+      ...h,
+      hub_name: h.hub_name || h.hub || 'Delivery Center',
+      predicted_leaves: Number(h.predicted_leaves ?? h.expected_leaves ?? 0),
+    }));
+  }, [leaveDemand]);
+
+  // Clean role leave demand data for chart
+  const roleLeaveData = useMemo(() => {
+    if (!leaveDemand?.role_leave_demand) return [];
+    return leaveDemand.role_leave_demand.map((r: any) => ({
+      ...r,
+      predicted_leaves: Number(r.predicted_leaves ?? r.expected_leaves ?? 0),
+    }));
+  }, [leaveDemand]);
+
   // Extract unique hubs for filtering
   const uniqueHubs = useMemo(() => {
     if (!attrition?.employee_predictions) return [];
@@ -88,7 +139,11 @@ export const PredictionsPage: React.FC = () => {
   // Calculate peak leave day
   const peakDay = useMemo(() => {
     if (!leaveDemand?.daily_forecasts || leaveDemand.daily_forecasts.length === 0) return null;
-    return [...leaveDemand.daily_forecasts].sort((a: any, b: any) => b.predicted_leave_count - a.predicted_leave_count)[0];
+    return [...leaveDemand.daily_forecasts].sort(
+      (a: any, b: any) =>
+        Number(b.expected_leaves ?? b.predicted_leave_count ?? 0) -
+        Number(a.expected_leaves ?? a.predicted_leave_count ?? 0)
+    )[0];
   }, [leaveDemand]);
 
   return (
@@ -359,7 +414,7 @@ export const PredictionsPage: React.FC = () => {
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart
                             layout="vertical"
-                            data={attrition.global_feature_importance?.slice(0, 6) || []}
+                            data={featureImportanceData}
                             margin={{ top: 5, right: 15, left: 45, bottom: 5 }}
                           >
                             <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
@@ -367,20 +422,20 @@ export const PredictionsPage: React.FC = () => {
                               type="number"
                               tick={{ fontSize: 10 }}
                               unit="%"
-                              tickFormatter={(v) => `${Math.round(v * 100)}`}
+                              tickFormatter={(v) => `${Math.round(v)}`}
                             />
                             <YAxis
                               type="category"
                               dataKey="label"
                               tick={{ fontSize: 10 }}
-                              width={85}
+                              width={95}
                             />
                             <Tooltip
-                              formatter={(value: any) => [`${(Number(value) * 100).toFixed(1)}% weight`, 'Impact']}
+                              formatter={(value: any) => [`${Number(value).toFixed(1)}% weight`, 'Impact']}
                               contentStyle={{ borderRadius: 8, fontSize: 11 }}
                             />
                             <Bar dataKey="importance" fill="#3B82F6" radius={[0, 4, 4, 0]}>
-                              {attrition.global_feature_importance?.slice(0, 6).map((_: any, index: number) => (
+                              {featureImportanceData.map((_: any, index: number) => (
                                 <Cell
                                   key={`cell-${index}`}
                                   fill={index === 0 ? '#2563EB' : index === 1 ? '#3B82F6' : '#60A5FA'}
@@ -463,14 +518,14 @@ export const PredictionsPage: React.FC = () => {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                          {filteredEmployees.length === 0 ? (
+                          {paginatedEmployees.length === 0 ? (
                             <tr>
                               <td colSpan={8} className="py-8 text-center text-slate-500">
                                 No matching employee risk predictions found.
                               </td>
                             </tr>
                           ) : (
-                            filteredEmployees.map((emp: any) => {
+                            paginatedEmployees.map((emp: any) => {
                               const isHigh = emp.risk_level === 'High';
                               const isMed = emp.risk_level === 'Medium';
                               return (
@@ -490,7 +545,7 @@ export const PredictionsPage: React.FC = () => {
                                   </td>
                                   <td className="py-2.5 px-2 font-mono">
                                     <div>{emp.age} yrs</div>
-                                    <div className="text-[10px] text-slate-500">{emp.tenure_years}y ten.</div>
+                                    <div className="text-[10px] text-slate-500">{Number(emp.tenure_years || 0).toFixed(1)}y ten.</div>
                                   </td>
                                   <td className="py-2.5 px-2 font-mono">
                                     <span
@@ -500,7 +555,7 @@ export const PredictionsPage: React.FC = () => {
                                           : 'text-slate-700 dark:text-slate-300'
                                       }
                                     >
-                                      {emp.overtime_hours}h
+                                      {Number(emp.overtime_hours || 0).toFixed(1)}h
                                     </span>
                                   </td>
                                   <td className="py-2.5 px-2 font-mono">
@@ -511,7 +566,7 @@ export const PredictionsPage: React.FC = () => {
                                           : 'text-slate-700 dark:text-slate-300'
                                       }
                                     >
-                                      {emp.attendance_rate}%
+                                      {Number(emp.attendance_rate || 0).toFixed(1)}%
                                     </span>
                                   </td>
                                   <td className="py-2.5 px-3">
@@ -529,7 +584,7 @@ export const PredictionsPage: React.FC = () => {
                                           isHigh ? 'text-red-600' : isMed ? 'text-amber-600' : 'text-emerald-600'
                                         }`}
                                       >
-                                        {emp.resignation_probability_pct}%
+                                        {Number(emp.resignation_probability_pct || 0).toFixed(1)}%
                                       </span>
                                     </div>
                                     <div className="mt-0.5">
@@ -564,6 +619,47 @@ export const PredictionsPage: React.FC = () => {
                         </tbody>
                       </table>
                     </div>
+
+                    {/* Pagination Controls */}
+                    {filteredEmployees.length > 0 && (
+                      <div className="p-3 sm:p-4 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600 dark:text-slate-400">
+                        <div>
+                          Showing{' '}
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                            {(currentPage - 1) * pageSize + 1}
+                          </span>{' '}
+                          to{' '}
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                            {Math.min(currentPage * pageSize, filteredEmployees.length)}
+                          </span>{' '}
+                          of{' '}
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                            {filteredEmployees.length}
+                          </span>{' '}
+                          employees
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                            disabled={currentPage === 1}
+                            className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium transition disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            Previous
+                          </button>
+                          <span className="px-2 font-mono font-medium text-slate-700 dark:text-slate-300">
+                            Page {currentPage} of {totalPages}
+                          </span>
+                          <button
+                            onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                            disabled={currentPage === totalPages}
+                            className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium transition disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Academic Disclaimer Callout */}
@@ -627,7 +723,7 @@ export const PredictionsPage: React.FC = () => {
                         {peakDay ? `${peakDay.date}` : 'N/A'}
                       </div>
                       <div className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 truncate">
-                        Highest volume ({peakDay?.predicted_leave_count ?? 0} req)
+                        Highest volume ({peakDay?.expected_leaves ?? peakDay?.predicted_leave_count ?? 0} req)
                       </div>
                     </div>
 
@@ -647,13 +743,13 @@ export const PredictionsPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Daily Forecast Timeline with 95% Confidence Interval */}
+                  {/* Daily Forecast Timeline */}
                   <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-5 space-y-3 sm:space-y-4 shadow-xs">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
                       <div>
                         <h2 className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                           <TrendingUp size={15} className="text-blue-500" />
-                          Daily Leave Forecast (with 95% Confidence Interval)
+                          Daily Leave Forecast
                         </h2>
                         <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
                           Expected daily leave requests considering weekend proximity and historical demand
@@ -661,10 +757,7 @@ export const PredictionsPage: React.FC = () => {
                       </div>
                       <div className="flex items-center gap-3 text-xs">
                         <span className="flex items-center gap-1.5 text-blue-600 font-medium">
-                          <span className="w-2.5 h-0.5 bg-blue-600 rounded" /> Expected
-                        </span>
-                        <span className="flex items-center gap-1.5 text-slate-400">
-                          <span className="w-2.5 h-2 bg-blue-100 dark:bg-blue-900/40 rounded" /> 95% Range
+                          <span className="w-2.5 h-0.5 bg-blue-600 rounded" /> Expected Leaves
                         </span>
                       </div>
                     </div>
@@ -672,17 +765,13 @@ export const PredictionsPage: React.FC = () => {
                     <div className="h-60 sm:h-72">
                       <ResponsiveContainer width="100%" height="100%">
                         <AreaChart
-                          data={leaveDemand.daily_forecasts || []}
+                          data={dailyForecastData}
                           margin={{ top: 10, right: 10, left: -15, bottom: 0 }}
                         >
                           <defs>
                             <linearGradient id="colorExpected" x1="0" y1="0" x2="0" y2="1">
                               <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.4} />
                               <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.0} />
-                            </linearGradient>
-                            <linearGradient id="colorCi" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#93C5FD" stopOpacity={0.3} />
-                              <stop offset="95%" stopColor="#93C5FD" stopOpacity={0.05} />
                             </linearGradient>
                           </defs>
                           <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
@@ -702,13 +791,10 @@ export const PredictionsPage: React.FC = () => {
                                 return (
                                   <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-2.5 rounded-lg shadow-lg text-xs space-y-1">
                                     <div className="font-bold text-slate-800 dark:text-slate-100">
-                                      {data.date} ({data.day_of_week})
+                                      {data.date} {data.day_name ? `(${data.day_name})` : ''}
                                     </div>
                                     <div className="text-blue-600 font-semibold">
-                                      Expected: {data.predicted_leave_count} leaves
-                                    </div>
-                                    <div className="text-slate-400">
-                                      95% Range: [{data.lower_ci} – {data.upper_ci}]
+                                      Expected: {data.expected_leaves} leaves
                                     </div>
                                   </div>
                                 );
@@ -718,16 +804,11 @@ export const PredictionsPage: React.FC = () => {
                           />
                           <Area
                             type="monotone"
-                            dataKey="upper_ci"
-                            stroke="transparent"
-                            fill="url(#colorCi)"
-                          />
-                          <Area
-                            type="monotone"
-                            dataKey="predicted_leave_count"
+                            dataKey="expected_leaves"
                             stroke="#2563EB"
-                            strokeWidth={2}
+                            strokeWidth={2.5}
                             fill="url(#colorExpected)"
+                            name="Expected Leaves"
                           />
                         </AreaChart>
                       </ResponsiveContainer>
@@ -745,19 +826,19 @@ export const PredictionsPage: React.FC = () => {
                       <div className="h-52 sm:h-56">
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart
-                            data={leaveDemand.hub_leave_demand || []}
+                            data={hubLeaveData}
                             margin={{ top: 10, right: 10, left: -25, bottom: 20 }}
                           >
                             <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
                             <XAxis
-                              dataKey="hub"
+                              dataKey="hub_name"
                               tick={{ fontSize: 9 }}
                               angle={-20}
                               textAnchor="end"
                             />
                             <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
                             <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11 }} />
-                            <Bar dataKey="expected_leaves" fill="#3B82F6" radius={[4, 4, 0, 0]} name="Expected Leaves" />
+                            <Bar dataKey="predicted_leaves" fill="#3B82F6" radius={[4, 4, 0, 0]} name="Expected Leaves" />
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
@@ -772,7 +853,7 @@ export const PredictionsPage: React.FC = () => {
                       <div className="h-52 sm:h-56">
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart
-                            data={leaveDemand.role_leave_demand || []}
+                            data={roleLeaveData}
                             margin={{ top: 10, right: 10, left: -25, bottom: 20 }}
                           >
                             <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
@@ -784,7 +865,7 @@ export const PredictionsPage: React.FC = () => {
                             />
                             <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
                             <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11 }} />
-                            <Bar dataKey="expected_leaves" fill="#8B5CF6" radius={[4, 4, 0, 0]} name="Expected Leaves" />
+                            <Bar dataKey="predicted_leaves" fill="#8B5CF6" radius={[4, 4, 0, 0]} name="Expected Leaves" />
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
@@ -979,9 +1060,11 @@ export const PredictionsPage: React.FC = () => {
                                 }`}
                               >
                                 <td className="py-2.5 px-3 font-bold text-slate-800 dark:text-slate-100">
-                                  {record.hub}
+                                  {record.hub_name || record.hub || 'Delivery Center'}
                                 </td>
-                                <td className="py-2.5 px-2 text-right font-mono">{record.active_workers}</td>
+                                <td className="py-2.5 px-2 text-right font-mono">
+                                  {record.current_active ?? record.active_workers ?? 0}
+                                </td>
                                 <td className="py-2.5 px-2 text-right font-mono text-amber-600">
                                   -{record.predicted_leave}
                                 </td>
@@ -1011,16 +1094,20 @@ export const PredictionsPage: React.FC = () => {
                                       className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
                                         isCritical
                                           ? 'bg-red-600 text-white'
-                                          : record.status === 'Tight Capacity'
+                                          : (record.risk_level || record.status) === 'Tight Capacity'
                                           ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400'
+                                          : (record.risk_level || record.status) === 'Critical'
+                                          ? 'bg-red-600 text-white'
+                                          : (record.risk_level || record.status) === 'High'
+                                          ? 'bg-orange-100 dark:bg-orange-950/60 text-orange-700 dark:text-orange-400'
                                           : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400'
                                       }`}
                                     >
-                                      {record.status}
+                                      {record.risk_level || record.status || 'Balanced'}
                                     </span>
                                   </div>
                                   <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                                    {record.recommended_action}
+                                    {record.action_recommendation || record.recommended_action || 'Staffing is balanced and meets operational baseline targets.'}
                                   </div>
                                 </td>
                               </tr>

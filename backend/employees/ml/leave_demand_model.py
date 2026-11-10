@@ -123,7 +123,9 @@ def forecast_future_leave_demand(days_ahead: int = 14) -> Dict[str, Any]:
         daily_forecasts.append({
             'date': current_d.strftime('%Y-%m-%d'),
             'day_name': current_d.strftime('%a'),
+            'day_of_week': current_d.strftime('%a'),
             'expected_leaves': round(expected_day_leaves, 2),
+            'predicted_leave_count': round(expected_day_leaves, 2),
             'holiday_proximate': bool(holiday_near),
             'high_demand_day': bool(is_monday or is_friday or holiday_near),
         })
@@ -145,8 +147,10 @@ def forecast_future_leave_demand(days_ahead: int = 14) -> Dict[str, Any]:
         hub_pred = max(1, int(round(total_predicted * share)))
         hub_leave_demand.append({
             'hub_id': hub.id,
+            'hub': hub.name,
             'hub_name': hub.name,
             'active_staff': hub_staff,
+            'expected_leaves': hub_pred,
             'predicted_leaves': hub_pred,
             'expected_range': f"{max(0, hub_pred - 2)}–{hub_pred + 2}",
             'risk_status': 'Elevated' if hub_pred >= 5 else 'Normal',
@@ -154,9 +158,9 @@ def forecast_future_leave_demand(days_ahead: int = 14) -> Dict[str, Any]:
 
     if not hub_leave_demand:
         hub_leave_demand = [
-            {'hub_id': 1, 'hub_name': 'Lucena Delivery Center', 'active_staff': 8, 'predicted_leaves': max(1, round(total_predicted * 0.5)), 'expected_range': '3–7', 'risk_status': 'Elevated'},
-            {'hub_id': 2, 'hub_name': 'Tayabas Logistics Hub', 'active_staff': 5, 'predicted_leaves': max(1, round(total_predicted * 0.3)), 'expected_range': '1–4', 'risk_status': 'Normal'},
-            {'hub_id': 3, 'hub_name': 'Quezon Distribution Center', 'active_staff': 3, 'predicted_leaves': max(1, round(total_predicted * 0.2)), 'expected_range': '0–3', 'risk_status': 'Normal'},
+            {'hub_id': 1, 'hub': 'Lucena Delivery Center', 'hub_name': 'Lucena Delivery Center', 'active_staff': 8, 'expected_leaves': max(1, round(total_predicted * 0.5)), 'predicted_leaves': max(1, round(total_predicted * 0.5)), 'expected_range': '3–7', 'risk_status': 'Elevated'},
+            {'hub_id': 2, 'hub': 'Tayabas Logistics Hub', 'hub_name': 'Tayabas Logistics Hub', 'active_staff': 5, 'expected_leaves': max(1, round(total_predicted * 0.3)), 'predicted_leaves': max(1, round(total_predicted * 0.3)), 'expected_range': '1–4', 'risk_status': 'Normal'},
+            {'hub_id': 3, 'hub': 'Quezon Distribution Center', 'hub_name': 'Quezon Distribution Center', 'active_staff': 3, 'expected_leaves': max(1, round(total_predicted * 0.2)), 'predicted_leaves': max(1, round(total_predicted * 0.2)), 'expected_range': '0–3', 'risk_status': 'Normal'},
         ]
 
     # Leave Demand by Role
@@ -164,18 +168,21 @@ def forecast_future_leave_demand(days_ahead: int = 14) -> Dict[str, Any]:
         {
             'role': 'Riders / Couriers',
             'count': riders_count,
+            'expected_leaves': int(round(total_predicted * (riders_count / max(1, total_active)))),
             'predicted_leaves': int(round(total_predicted * (riders_count / max(1, total_active)))),
             'operational_impact': 'High (Route delivery coverage)',
         },
         {
             'role': 'Warehouse Sorters',
             'count': sorters_count,
+            'expected_leaves': int(round(total_predicted * (sorters_count / max(1, total_active)))),
             'predicted_leaves': int(round(total_predicted * (sorters_count / max(1, total_active)))),
             'operational_impact': 'Medium (Sorting shift balance)',
         },
         {
             'role': 'Other / Admin / Lead',
             'count': other_roles_count,
+            'expected_leaves': max(0, total_predicted - int(round(total_predicted * (riders_count / max(1, total_active)))) - int(round(total_predicted * (sorters_count / max(1, total_active))))),
             'predicted_leaves': max(0, total_predicted - int(round(total_predicted * (riders_count / max(1, total_active)))) - int(round(total_predicted * (sorters_count / max(1, total_active))))),
             'operational_impact': 'Low (Supervisory coverage)',
         }

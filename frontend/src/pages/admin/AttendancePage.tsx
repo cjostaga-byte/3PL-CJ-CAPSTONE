@@ -1,5 +1,6 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import Sidebar from '@/components/Sidebar';
 import AdminMobileProfile from '@/components/AdminMobileProfile';
 
@@ -9,20 +10,27 @@ import { SkeletonTable, SkeletonStatCard } from '@/components/Skeleton';
 import { useGetAttendance, useGetHubs, useGetEmployees, useApproveAttendance, useDisapproveAttendance } from '@/hooks/useQueries';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
-import { Download, Search, Clock } from 'lucide-react';
+import { Download, Search, Clock, Upload } from 'lucide-react';
 import { normalizeApiResponse } from '@/utils/apiResponseHandler';
+import { attendanceAPI } from '@/api/apiService';
+import { QUERY_KEYS } from '@/constants/api';
+import * as XLSX from 'xlsx';
 
 export const AttendancePage = () => {
   const { employee: authEmployee, isHR } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
+  const queryClient = useQueryClient();
   const basePath = window.location.pathname.startsWith('/hr') ? '/hr' : '/admin';
   const [hubFilter, setHubFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [modeFilter, setModeFilter] = useState<'Automatic' | 'Manual'>('Automatic');
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState(new Date().toISOString().split('T')[0]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [pageByHub, setPageByHub] = useState<Record<string, number>>({});
+  const [activeImportHub, setActiveImportHub] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const approveAttendance = useApproveAttendance();
   const disapproveAttendance = useDisapproveAttendance();
@@ -266,6 +274,115 @@ export const AttendancePage = () => {
     window.URL.revokeObjectURL(url);
   };
 
+  const handleExportManual = (hubName: string) => {
+    const hubData = attendanceByHub[hubName];
+    if (!hubData || hubData.length === 0) {
+      toast.error('No employee records to export for this delivery center');
+      return;
+    }
+
+    const exportRows = hubData.map((record: any) => ({
+      'Employee': record.employee_name || record.full_name || '',
+      'ID Code': record.jtp_code || record.employee_id || '',
+      'Delivery Center': record.hub_name || record.hub || hubName,
+      'Date': record.date || dateFilter || new Date().toISOString().split('T')[0],
+      'Time In': record.clock_in_time ? formatTime(record.clock_in_time) : '',
+      'Time Out': record.clock_out_time ? formatTime(record.clock_out_time) : '',
+      'Status': record.status || 'Present',
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportRows);
+    worksheet['!cols'] = [
+      { wch: 26 },
+      { wch: 16 },
+      { wch: 22 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 14 },
+    ];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendance');
+    const fileName = `${hubName.replace(/\s+/g, '_')}_attendance_${dateFilter || new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
+    toast.success(`Exported ${hubData.length} records for ${hubName}`);
+  };
+
+  const triggerImport = (hubName: string) => {
+    setActiveImportHub(hubName);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const targetHub = activeImportHub;
+    const loader = toast.loading('Importing attendance records...');
+
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const rawRows: any[] = XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: '' });
+
+      if (rawRows.length === 0) {
+        toast.error('The selected file contains no records.');
+        return;
+      }
+
+      const recordsToImport = rawRows.map((row) => {
+        const getVal = (...keys: string[]) => {
+          for (const k of keys) {
+            const found = Object.keys(row).find(
+              (key) => key.trim().toLowerCase() === k.toLowerCase()
+            );
+            if (found && row[found] !== undefined && row[found] !== null && String(row[found]).trim() !== '') {
+              return String(row[found]).trim();
+            }
+          }
+          return '';
+        };
+
+        return {
+          employee_name: getVal('Employee', 'Employee Name', 'Name', 'Full Name'),
+          jtp_code: getVal('ID Code', 'ID', 'JTP Code', 'Employee ID', 'IDCode', 'Code'),
+          hub_name: getVal('Delivery Center', 'Hub', 'Delivery Center Name', 'Hub Name') || targetHub,
+          date: getVal('Date') || dateFilter,
+          time_in: getVal('Time In', 'TimeIn', 'Clock In', 'ClockIn'),
+          time_out: getVal('Time Out', 'TimeOut', 'Clock Out', 'ClockOut'),
+          status: getVal('Status'),
+        };
+      });
+
+      const res = await attendanceAPI.bulkImportAttendance(recordsToImport);
+
+      const created = res.created_count ?? 0;
+      const updated = res.updated_count ?? 0;
+      const failed = res.failed_count ?? 0;
+
+      if (created + updated > 0) {
+        toast.success(`Import complete: ${created} created, ${updated} updated${failed > 0 ? `, ${failed} skipped` : ''}`);
+      } else if (failed > 0) {
+        toast.error(`Import failed: ${failed} records could not be matched`);
+      } else {
+        toast.success('No attendance records were modified.');
+      }
+
+      await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.ATTENDANCE] });
+    } catch (err: any) {
+      console.error('Import error:', err);
+      toast.error(err?.response?.data?.error || err?.message || 'Failed to import attendance records');
+    } finally {
+      toast.dismiss(loader);
+      if (e.target) e.target.value = '';
+    }
+  };
+
   const getStatusBadgeVariant = (status: string) => {
     switch (status?.toLowerCase()) {
       case 'present':
@@ -434,9 +551,18 @@ export const AttendancePage = () => {
         </Card>
       </div>
 
+      {/* Hidden file input for manual attendance Excel import */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileImport}
+        accept=".xlsx,.xls,.csv"
+        className="hidden"
+      />
+
       {/* Filters */}
       <Card className="max-md:p-3">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 max-md:gap-2.5">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 max-md:gap-2.5">
           <div>
             <label className="block text-sm max-md:text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5 max-md:mb-1">
               Date
@@ -488,6 +614,21 @@ export const AttendancePage = () => {
 
           <div>
             <label className="block text-sm max-md:text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5 max-md:mb-1">
+              Mode
+            </label>
+            <select
+              value={modeFilter}
+              onChange={(e) => setModeFilter(e.target.value as 'Automatic' | 'Manual')}
+              aria-label="Filter by mode"
+              className="input-field w-full max-md:text-xs max-md:py-2 max-md:px-3"
+            >
+              <option value="Automatic">Automatic</option>
+              <option value="Manual">Manual</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm max-md:text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5 max-md:mb-1">
               Search
             </label>
             <div className="relative">
@@ -519,13 +660,32 @@ export const AttendancePage = () => {
                 </h2>
                 <p className="text-sm max-md:text-xs text-gray-500 dark:text-gray-400 mt-1">{records.length} records</p>
               </div>
-              <button
-                onClick={() => handleDownload(hubName)}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 max-md:py-1.5 max-md:px-3 max-md:text-xs rounded flex items-center gap-2"
-              >
-                <Download size={18} className="max-md:w-4 max-md:h-4" />
-                <span className="max-md:hidden">Download</span>
-              </button>
+              {modeFilter === 'Automatic' ? (
+                <button
+                  onClick={() => handleDownload(hubName)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 max-md:py-1.5 max-md:px-3 max-md:text-xs rounded flex items-center gap-2"
+                >
+                  <Download size={18} className="max-md:w-4 max-md:h-4" />
+                  <span className="max-md:hidden">Download</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => triggerImport(hubName)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 max-md:py-1.5 max-md:px-3 max-md:text-xs rounded flex items-center gap-2 transition-colors"
+                  >
+                    <Upload size={18} className="max-md:w-4 max-md:h-4" />
+                    <span>Import</span>
+                  </button>
+                  <button
+                    onClick={() => handleExportManual(hubName)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 max-md:py-1.5 max-md:px-3 max-md:text-xs rounded flex items-center gap-2 transition-colors"
+                  >
+                    <Download size={18} className="max-md:w-4 max-md:h-4" />
+                    <span>Export</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             {records.length > 0 ? (

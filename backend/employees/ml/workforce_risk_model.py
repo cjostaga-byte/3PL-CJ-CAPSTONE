@@ -106,9 +106,11 @@ def evaluate_workforce_staffing_risk(
 
         hub_records.append({
             'hub_id': hub.id,
+            'hub': hub_name,
             'hub_name': hub_name,
             'location': hub.location or hub.city or 'Quezon',
             'current_active': current_active,
+            'active_workers': current_active,
             'required_workers': required_workers,
             'predicted_leave': predicted_leave,
             'predicted_attrition': predicted_attrition,
@@ -116,8 +118,10 @@ def evaluate_workforce_staffing_risk(
             'estimated_available': estimated_available,
             'staffing_gap': staffing_gap,
             'expected_workload_parcels': expected_workload_parcels,
+            'status': risk_level,
             'risk_level': risk_level,
             'risk_color': risk_color,
+            'recommended_action': action_recommendation,
             'action_recommendation': action_recommendation,
         })
 

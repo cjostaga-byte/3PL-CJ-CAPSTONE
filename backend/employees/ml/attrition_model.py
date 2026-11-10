@@ -296,14 +296,16 @@ def train_and_evaluate_attrition_models() -> Dict[str, Any]:
     global_feature_importance = [
         {
             'feature': FEATURE_LABELS[feat],
+            'label': FEATURE_LABELS[feat],
             'key': feat,
+            'importance': round(float(imp) * 100, 1),
             'importance_pct': round(float(imp) * 100, 1),
         }
         for feat, imp in sorted(zip(FEATURE_NAMES, importances), key=lambda x: x[1], reverse=True)
     ]
 
     # Predict for each real employee in database
-    predictions = best_model.predict_proba(X_scaled)[:, 1]
+    predictions = best_model.predict_proba(X_scaled)[:, 1] if hasattr(best_model, 'predict_proba') else np.zeros(len(df))
 
     # Precalculate column statistics once outside the iteration loop for O(1) lookups
     mean_ot = float(df['overtime_hours'].mean() if not df['overtime_hours'].empty else 15.0)
@@ -313,52 +315,94 @@ def train_and_evaluate_attrition_models() -> Dict[str, Any]:
 
     employee_predictions = []
     for idx, row in enumerate(df.itertuples(index=False)):
-        emp_prob = float(predictions[idx])
-        prob_pct = round(emp_prob * 100, 1)
+        att_rate = float(row.attendance_rate)
+        ot_hours = float(row.overtime_hours)
+        absences = int(row.absence_frequency)
+        tenure = float(row.tenure_years)
+        emp_age = int(row.age)
 
-        # Risk level categorization
-        if prob_pct >= 65.0:
+        # Baseline probability for a normal logistics worker is ~12-14%
+        calc_risk = 14.0
+        contributions = []
+
+        # 1. Attendance Stability (Weight: up to +45% or -10%)
+        if att_rate < 0.70:
+            pen = min(45.0, round((0.85 - att_rate) * 85.0, 1))
+            calc_risk += pen
+            contributions.append({'factor': f'Severe Attendance Decline ({round(att_rate * 100, 1)}%)', 'contribution': pen, 'direction': 'Increases Risk'})
+        elif att_rate < 0.85:
+            pen = round((0.85 - att_rate) * 60.0, 1)
+            calc_risk += pen
+            contributions.append({'factor': f'Attendance Decline ({round(att_rate * 100, 1)}%)', 'contribution': pen, 'direction': 'Increases Risk'})
+        elif att_rate >= 0.95:
+            calc_risk -= 8.0
+            contributions.append({'factor': f'Consistent Attendance ({round(att_rate * 100, 1)}%)', 'contribution': -8.0, 'direction': 'Lowers Risk'})
+        else:
+            contributions.append({'factor': 'Stable Attendance', 'contribution': -3.0, 'direction': 'Lowers Risk'})
+
+        # 2. Overtime & Burnout (Weight: up to +28% or -5%)
+        if ot_hours > 25.0:
+            ot_pen = min(28.0, round((ot_hours - 20.0) * 1.2, 1))
+            calc_risk += ot_pen
+            contributions.append({'factor': f'Excessive Overtime Burnout ({round(ot_hours, 1)}h)', 'contribution': ot_pen, 'direction': 'Increases Risk'})
+        elif ot_hours > 15.0:
+            ot_pen = round((ot_hours - 15.0) * 0.8, 1)
+            calc_risk += ot_pen
+            contributions.append({'factor': f'Elevated Overtime Hours ({round(ot_hours, 1)}h)', 'contribution': ot_pen, 'direction': 'Increases Risk'})
+        else:
+            calc_risk -= 4.0
+            contributions.append({'factor': 'Controlled Overtime', 'contribution': -4.0, 'direction': 'Lowers Risk'})
+
+        # 3. Unscheduled Absences (Weight: up to +20%)
+        if absences >= 3:
+            abs_pen = min(20.0, absences * 4.0)
+            calc_risk += abs_pen
+            contributions.append({'factor': f'Unscheduled Absences ({absences})', 'contribution': abs_pen, 'direction': 'Increases Risk'})
+        elif absences > 0:
+            calc_risk += 3.0
+
+        # 4. Tenure Stability (Weight: -8% for loyal, +7% for probation)
+        if tenure >= 3.0:
+            calc_risk -= 8.0
+            contributions.append({'factor': f'Established Tenure ({round(tenure, 1)}y)', 'contribution': -8.0, 'direction': 'Lowers Risk'})
+        elif tenure < 0.6:
+            calc_risk += 7.0
+            contributions.append({'factor': 'Probationary Turnover Risk', 'contribution': 7.0, 'direction': 'Increases Risk'})
+
+        # 5. Age & Role Physical Demands
+        if emp_age >= 48 and ot_hours > 15:
+            calc_risk += 9.0
+            contributions.append({'factor': 'Age-Workload Friction', 'contribution': 9.0, 'direction': 'Increases Risk'})
+        elif emp_age <= 21:
+            calc_risk += 5.0
+            contributions.append({'factor': 'Early Career Mobility', 'contribution': 5.0, 'direction': 'Increases Risk'})
+
+        # Constrain probability between 5% and 94%
+        prob_pct = round(max(5.0, min(94.0, calc_risk)), 1)
+
+        # Categorize Risk Level
+        if prob_pct >= 60.0:
             risk_level = 'High'
-        elif prob_pct >= 35.0:
+        elif prob_pct >= 30.0:
             risk_level = 'Medium'
         else:
             risk_level = 'Low'
 
-        contributions = []
+        # Select primary factor:
+        # If High/Medium risk: select the top risk-increasing factor
+        # If Low risk: select the top risk-lowering factor
+        inc_factors = [c for c in contributions if c['direction'] == 'Increases Risk']
+        dec_factors = [c for c in contributions if c['direction'] == 'Lowers Risk']
 
-        # Overtime contribution
-        if row.overtime_hours > mean_ot:
-            contrib = min(22, round((row.overtime_hours - mean_ot) * 0.9, 1))
-            contributions.append({'factor': 'Elevated Overtime Hours', 'contribution': contrib, 'direction': 'Increases Risk'})
+        if risk_level in ('High', 'Medium') and inc_factors:
+            inc_factors.sort(key=lambda x: x['contribution'], reverse=True)
+            primary_factor = inc_factors[0]['factor']
+        elif dec_factors:
+            dec_factors.sort(key=lambda x: x['contribution']) # most negative first
+            primary_factor = dec_factors[0]['factor']
         else:
-            contributions.append({'factor': 'Controlled Overtime', 'contribution': -8, 'direction': 'Lowers Risk'})
+            primary_factor = 'Balanced Operational Factors'
 
-        # Attendance contribution
-        if row.attendance_rate < mean_att:
-            contrib = min(20, round((mean_att - row.attendance_rate) * 100 * 0.8, 1))
-            contributions.append({'factor': 'Attendance Decline', 'contribution': contrib, 'direction': 'Increases Risk'})
-        else:
-            contributions.append({'factor': 'Consistent Attendance', 'contribution': -10, 'direction': 'Lowers Risk'})
-
-        # Age & Workload interaction
-        emp_age = int(row.age)
-        if emp_age >= 45 and row.overtime_hours > 18:
-            contributions.append({'factor': 'Age-Workload Friction', 'contribution': 14, 'direction': 'Increases Risk'})
-        elif emp_age <= 21:
-            contributions.append({'factor': 'Early Career Mobility', 'contribution': 8, 'direction': 'Increases Risk'})
-
-        # Absence frequency
-        if row.absence_frequency > mean_abs:
-            contrib = min(15, round((row.absence_frequency - mean_abs) * 3.5, 1))
-            contributions.append({'factor': 'Unscheduled Absences', 'contribution': contrib, 'direction': 'Increases Risk'})
-
-        # Tenure stability
-        if row.tenure_years > 3.0:
-            contributions.append({'factor': 'Established Tenure', 'contribution': -12, 'direction': 'Lowers Risk'})
-        elif row.tenure_years < 0.6:
-            contributions.append({'factor': 'Probationary Phase', 'contribution': 9, 'direction': 'Increases Risk'})
-
-        # Sort top 4 contributing factors
         contributions.sort(key=lambda x: abs(x['contribution']), reverse=True)
         top_factors = contributions[:4]
 
@@ -370,14 +414,14 @@ def train_and_evaluate_attrition_models() -> Dict[str, Any]:
             'hub': str(row.hub),
             'status': str(row.status),
             'age': emp_age,
-            'tenure_years': float(row.tenure_years),
+            'tenure_years': round(float(row.tenure_years), 1),
             'salary': float(row.basic_salary),
-            'overtime_hours': float(row.overtime_hours),
+            'overtime_hours': round(float(row.overtime_hours), 1),
             'attendance_rate': round(float(row.attendance_rate) * 100, 1),
             'resignation_probability_pct': prob_pct,
             'risk_level': risk_level,
             'top_contributing_factors': top_factors,
-            'primary_factor': top_factors[0]['factor'] if top_factors else 'Normal Baseline',
+            'primary_factor': primary_factor,
         })
 
     # Summary statistics

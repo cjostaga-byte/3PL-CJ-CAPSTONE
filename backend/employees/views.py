@@ -1487,6 +1487,129 @@ class AttendanceViewSet(viewsets.ModelViewSet):
         resp['Content-Disposition'] = f'attachment; filename="{filename_base}.csv"'
         return resp
 
+    @action(detail=False, methods=['post'], url_path='bulk-import')
+    def bulk_import(self, request):
+        """Bulk import attendance records (from Excel / CSV)."""
+        payload = request.data
+        records = payload.get('records', payload) if isinstance(payload, dict) else payload
+        if not isinstance(records, list):
+            return Response({'error': 'Expected an array of attendance records'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Build employee lookup caches
+        all_emps = Employee.objects.all().select_related('hub')
+        emp_by_code = {}
+        emp_by_name = {}
+        emp_by_id = {}
+        for emp in all_emps:
+            emp_by_id[emp.id] = emp
+            if emp.employee_id:
+                emp_by_code[str(emp.employee_id).strip().upper()] = emp
+            if emp.jtp_code:
+                emp_by_code[str(emp.jtp_code).strip().upper()] = emp
+            if emp.full_name:
+                emp_by_name[str(emp.full_name).strip().lower()] = emp
+
+        created_count = 0
+        updated_count = 0
+        errors = []
+
+        from django.utils.dateparse import parse_date, parse_datetime
+        from datetime import datetime, time
+
+        for idx, item in enumerate(records):
+            try:
+                code = str(item.get('jtp_code') or item.get('employee_id') or item.get('id_code') or item.get('code') or '').strip().upper()
+                name = str(item.get('employee_name') or item.get('name') or item.get('employee') or '').strip().lower()
+                emp_id = item.get('employee')
+
+                emp = None
+                if code and code in emp_by_code:
+                    emp = emp_by_code[code]
+                elif emp_id and int(emp_id) in emp_by_id:
+                    emp = emp_by_id[int(emp_id)]
+                elif name and name in emp_by_name:
+                    emp = emp_by_name[name]
+
+                if not emp:
+                    errors.append(f"Row {idx + 1}: Employee '{name or code}' not found.")
+                    continue
+
+                raw_date = str(item.get('date') or '').strip()
+                att_date = None
+                if raw_date:
+                    try:
+                        att_date = parse_date(raw_date)
+                    except Exception:
+                        pass
+                if not att_date:
+                    att_date = timezone.localdate()
+
+                raw_in = item.get('clock_in_time') or item.get('time_in') or item.get('time_in_time')
+                raw_out = item.get('clock_out_time') or item.get('time_out') or item.get('time_out_time')
+
+                def _parse_time_val(val, d):
+                    if not val or str(val).strip() in ('-', '', 'null', 'none', 'None'):
+                        return None
+                    val_str = str(val).strip()
+                    dt = parse_datetime(val_str)
+                    if dt:
+                        return dt
+                    for fmt in ('%I:%M %p', '%I:%M:%S %p', '%H:%M', '%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %I:%M %p'):
+                        try:
+                            parsed_t = datetime.strptime(val_str, fmt)
+                            return timezone.make_aware(datetime.combine(d, parsed_t.time()))
+                        except Exception:
+                            continue
+                    return None
+
+                clock_in = _parse_time_val(raw_in, att_date)
+                clock_out = _parse_time_val(raw_out, att_date)
+
+                raw_status = str(item.get('status') or '').strip()
+                if raw_status and raw_status.lower() in ('present', 'late', 'absent'):
+                    att_status = raw_status.capitalize()
+                elif clock_in:
+                    if clock_in.time() >= time(9, 0):
+                        att_status = 'Late'
+                    else:
+                        att_status = 'Present'
+                else:
+                    att_status = 'Absent'
+
+                att_obj, created = Attendance.objects.get_or_create(
+                    employee=emp,
+                    date=att_date,
+                    defaults={
+                        'clock_in_time': clock_in,
+                        'clock_out_time': clock_out,
+                        'status': att_status,
+                        'is_approved': True,
+                    }
+                )
+
+                if not created:
+                    if clock_in is not None:
+                        att_obj.clock_in_time = clock_in
+                    if clock_out is not None:
+                        att_obj.clock_out_time = clock_out
+                    att_obj.status = att_status
+                    att_obj.is_approved = True
+                    att_obj.save()
+                    updated_count += 1
+                else:
+                    created_count += 1
+
+            except Exception as e:
+                errors.append(f"Row {idx + 1}: {str(e)}")
+
+        return Response({
+            'success': True,
+            'message': f'Import completed. {created_count} created, {updated_count} updated.',
+            'created_count': created_count,
+            'updated_count': updated_count,
+            'errors': errors[:10],
+        }, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
         """Admin: Approve an attendance entry. Per user request, approving leaves recorded hours unchanged."""

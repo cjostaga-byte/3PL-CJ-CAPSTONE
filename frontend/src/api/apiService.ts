@@ -213,6 +213,11 @@ export const attendanceAPI = {
     const response = await apiClient.post(`/attendance/${id}/disapprove/`);
     return response.data;
   },
+
+  bulkImportAttendance: async (records: Record<string, unknown>[]) => {
+    const response = await apiClient.post('/attendance/bulk-import/', { records });
+    return response.data;
+  },
 };
 
 /* =========================
