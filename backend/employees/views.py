@@ -17,7 +17,7 @@ from django.db.models import Count, Prefetch, Q
 from django.http import HttpResponse, Http404
 import os
 import json
-from .models import Hub, Employee, EditRequest, LeaveRequest, Attendance, LiveLocation, Payroll, EmployeeDocument, ActivityLog, SecurityAlert, HRPermission, SavedImage, PaymentAccount
+from .models import Hub, Employee, EditRequest, LeaveRequest, Attendance, ManualAttendance, LiveLocation, Payroll, EmployeeDocument, ActivityLog, SecurityAlert, HRPermission, SavedImage, PaymentAccount
 
 
 # ── Custom Pagination Classes ──────────────────────────────────────────────────
@@ -109,7 +109,7 @@ def get_managed_hub_ids(user):
 
 from .serializers import (
     HubSerializer, EmployeeSerializer, EmployeeListSerializer, EmployeeCreateSerializer, EmployeeDocumentSerializer,
-    EditRequestSerializer, LeaveRequestSerializer, LoginSerializer, AttendanceSerializer, 
+    EditRequestSerializer, LeaveRequestSerializer, LoginSerializer, AttendanceSerializer, ManualAttendanceSerializer, 
     LiveLocationSerializer, PayrollSerializer, ActivityLogSerializer, SecurityAlertSerializer, HRPermissionSerializer
 )
 
@@ -1489,126 +1489,8 @@ class AttendanceViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='bulk-import')
     def bulk_import(self, request):
-        """Bulk import attendance records (from Excel / CSV)."""
-        payload = request.data
-        records = payload.get('records', payload) if isinstance(payload, dict) else payload
-        if not isinstance(records, list):
-            return Response({'error': 'Expected an array of attendance records'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Build employee lookup caches
-        all_emps = Employee.objects.all().select_related('hub')
-        emp_by_code = {}
-        emp_by_name = {}
-        emp_by_id = {}
-        for emp in all_emps:
-            emp_by_id[emp.id] = emp
-            if emp.employee_id:
-                emp_by_code[str(emp.employee_id).strip().upper()] = emp
-            if emp.jtp_code:
-                emp_by_code[str(emp.jtp_code).strip().upper()] = emp
-            if emp.full_name:
-                emp_by_name[str(emp.full_name).strip().lower()] = emp
-
-        created_count = 0
-        updated_count = 0
-        errors = []
-
-        from django.utils.dateparse import parse_date, parse_datetime
-        from datetime import datetime, time
-
-        for idx, item in enumerate(records):
-            try:
-                code = str(item.get('jtp_code') or item.get('employee_id') or item.get('id_code') or item.get('code') or '').strip().upper()
-                name = str(item.get('employee_name') or item.get('name') or item.get('employee') or '').strip().lower()
-                emp_id = item.get('employee')
-
-                emp = None
-                if code and code in emp_by_code:
-                    emp = emp_by_code[code]
-                elif emp_id and int(emp_id) in emp_by_id:
-                    emp = emp_by_id[int(emp_id)]
-                elif name and name in emp_by_name:
-                    emp = emp_by_name[name]
-
-                if not emp:
-                    errors.append(f"Row {idx + 1}: Employee '{name or code}' not found.")
-                    continue
-
-                raw_date = str(item.get('date') or '').strip()
-                att_date = None
-                if raw_date:
-                    try:
-                        att_date = parse_date(raw_date)
-                    except Exception:
-                        pass
-                if not att_date:
-                    att_date = timezone.localdate()
-
-                raw_in = item.get('clock_in_time') or item.get('time_in') or item.get('time_in_time')
-                raw_out = item.get('clock_out_time') or item.get('time_out') or item.get('time_out_time')
-
-                def _parse_time_val(val, d):
-                    if not val or str(val).strip() in ('-', '', 'null', 'none', 'None'):
-                        return None
-                    val_str = str(val).strip()
-                    dt = parse_datetime(val_str)
-                    if dt:
-                        return dt
-                    for fmt in ('%I:%M %p', '%I:%M:%S %p', '%H:%M', '%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %I:%M %p'):
-                        try:
-                            parsed_t = datetime.strptime(val_str, fmt)
-                            return timezone.make_aware(datetime.combine(d, parsed_t.time()))
-                        except Exception:
-                            continue
-                    return None
-
-                clock_in = _parse_time_val(raw_in, att_date)
-                clock_out = _parse_time_val(raw_out, att_date)
-
-                raw_status = str(item.get('status') or '').strip()
-                if raw_status and raw_status.lower() in ('present', 'late', 'absent'):
-                    att_status = raw_status.capitalize()
-                elif clock_in:
-                    if clock_in.time() >= time(9, 0):
-                        att_status = 'Late'
-                    else:
-                        att_status = 'Present'
-                else:
-                    att_status = 'Absent'
-
-                att_obj, created = Attendance.objects.get_or_create(
-                    employee=emp,
-                    date=att_date,
-                    defaults={
-                        'clock_in_time': clock_in,
-                        'clock_out_time': clock_out,
-                        'status': att_status,
-                        'is_approved': True,
-                    }
-                )
-
-                if not created:
-                    if clock_in is not None:
-                        att_obj.clock_in_time = clock_in
-                    if clock_out is not None:
-                        att_obj.clock_out_time = clock_out
-                    att_obj.status = att_status
-                    att_obj.is_approved = True
-                    att_obj.save()
-                    updated_count += 1
-                else:
-                    created_count += 1
-
-            except Exception as e:
-                errors.append(f"Row {idx + 1}: {str(e)}")
-
-        return Response({
-            'success': True,
-            'message': f'Import completed. {created_count} created, {updated_count} updated.',
-            'created_count': created_count,
-            'updated_count': updated_count,
-            'errors': errors[:10],
-        }, status=status.HTTP_200_OK)
+        """Bulk import attendance records (routes to ManualAttendance for record separation and high-speed batching)."""
+        return ManualAttendanceViewSet().bulk_import(request)
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
@@ -1680,6 +1562,192 @@ class AttendanceViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         except Exception as e:
             return Response({'error': str(e)}, status=400)
+
+
+class ManualAttendanceViewSet(viewsets.ModelViewSet):
+    """ViewSet for manual attendance records entered or imported separately from automatic clock-ins."""
+    serializer_class = ManualAttendanceSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = ManualAttendance.objects.exclude(
+            employee__role__in=['Admin', 'HR']
+        ).select_related('employee', 'employee__hub').order_by('-date', '-clock_in_time')
+
+        queryset = apply_hr_hub_filter(queryset, self.request.user, hub_field='employee__hub')
+        hub_id = self.request.query_params.get('hub_id')
+        employee_id = self.request.query_params.get('employee_id')
+        date = self.request.query_params.get('date')
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+
+        if hub_id:
+            queryset = queryset.filter(employee__hub_id=hub_id)
+        if employee_id:
+            queryset = queryset.filter(employee_id=employee_id)
+        if date:
+            queryset = queryset.filter(date=date)
+        if start_date:
+            queryset = queryset.filter(date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(date__lte=end_date)
+        return queryset
+
+    @action(detail=False, methods=['post'], url_path='bulk-import')
+    def bulk_import(self, request):
+        """High-speed bulk import for manual attendance records (Excel / CSV)."""
+        payload = request.data
+        records = payload.get('records', payload) if isinstance(payload, dict) else payload
+        if not isinstance(records, list):
+            return Response({'error': 'Expected an array of attendance records'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 1 single DB query to cache all employees
+        all_emps = Employee.objects.all().select_related('hub')
+        emp_by_code = {}
+        emp_by_name = {}
+        emp_by_id = {}
+        for emp in all_emps:
+            emp_by_id[emp.id] = emp
+            if emp.employee_id:
+                emp_by_code[str(emp.employee_id).strip().upper()] = emp
+            if emp.jtp_code:
+                emp_by_code[str(emp.jtp_code).strip().upper()] = emp
+            if emp.full_name:
+                emp_by_name[str(emp.full_name).strip().lower()] = emp
+
+        from django.utils.dateparse import parse_date, parse_datetime
+        from datetime import datetime, time
+        from django.utils import timezone
+        from django.db import transaction
+
+        def _parse_time_val(val, d):
+            if not val or str(val).strip() in ('-', '', 'null', 'none', 'None'):
+                return None
+            val_str = str(val).strip()
+            dt = parse_datetime(val_str)
+            if dt:
+                return dt
+            for fmt in ('%I:%M %p', '%I:%M:%S %p', '%H:%M', '%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %I:%M %p'):
+                try:
+                    parsed_t = datetime.strptime(val_str, fmt)
+                    return timezone.make_aware(datetime.combine(d, parsed_t.time()))
+                except Exception:
+                    continue
+            return None
+
+        parsed_rows = []
+        target_dates = set()
+        matched_emp_ids = set()
+        failed_count = 0
+
+        for item in records:
+            code = str(item.get('jtp_code') or item.get('employee_id') or item.get('id_code') or item.get('code') or '').strip().upper()
+            name = str(item.get('employee_name') or item.get('name') or item.get('employee') or '').strip().lower()
+            emp_id = item.get('employee')
+
+            emp = None
+            if code and code in emp_by_code:
+                emp = emp_by_code[code]
+            elif emp_id and int(emp_id) in emp_by_id:
+                emp = emp_by_id[int(emp_id)]
+            elif name and name in emp_by_name:
+                emp = emp_by_name[name]
+
+            if not emp:
+                failed_count += 1
+                continue
+
+            raw_date = str(item.get('date') or '').strip()
+            att_date = None
+            if raw_date:
+                try:
+                    att_date = parse_date(raw_date)
+                except Exception:
+                    pass
+            if not att_date:
+                att_date = timezone.localdate()
+
+            target_dates.add(att_date)
+            matched_emp_ids.add(emp.id)
+
+            raw_in = item.get('clock_in_time') or item.get('time_in') or item.get('time_in_time')
+            raw_out = item.get('clock_out_time') or item.get('time_out') or item.get('time_out_time')
+            clock_in = _parse_time_val(raw_in, att_date)
+            clock_out = _parse_time_val(raw_out, att_date)
+
+            raw_status = str(item.get('status') or '').strip()
+            if raw_status and raw_status.lower() in ('present', 'late', 'absent'):
+                att_status = raw_status.capitalize()
+            elif clock_in:
+                if clock_in.time() >= time(9, 0):
+                    att_status = 'Late'
+                else:
+                    att_status = 'Present'
+            else:
+                att_status = 'Absent'
+
+            parsed_rows.append({
+                'employee': emp,
+                'date': att_date,
+                'clock_in_time': clock_in,
+                'clock_out_time': clock_out,
+                'status': att_status,
+            })
+
+        # Fetch existing manual attendance records in 1 single query
+        existing_recs = ManualAttendance.objects.filter(
+            employee_id__in=matched_emp_ids,
+            date__in=target_dates
+        )
+        existing_map = { (r.employee_id, r.date): r for r in existing_recs }
+
+        to_create = []
+        to_update = []
+
+        for row in parsed_rows:
+            key = (row['employee'].id, row['date'])
+            if key in existing_map:
+                obj = existing_map[key]
+                obj.clock_in_time = row['clock_in_time']
+                obj.clock_out_time = row['clock_out_time']
+                obj.status = row['status']
+                obj.is_approved = True
+                to_update.append(obj)
+            else:
+                to_create.append(ManualAttendance(
+                    employee=row['employee'],
+                    date=row['date'],
+                    clock_in_time=row['clock_in_time'],
+                    clock_out_time=row['clock_out_time'],
+                    status=row['status'],
+                    is_approved=True
+                ))
+
+        created_count = 0
+        updated_count = 0
+
+        with transaction.atomic():
+            if to_create:
+                ManualAttendance.objects.bulk_create(to_create, ignore_conflicts=True)
+                created_count = len(to_create)
+            if to_update:
+                ManualAttendance.objects.bulk_update(
+                    to_update,
+                    ['clock_in_time', 'clock_out_time', 'status', 'is_approved'],
+                    batch_size=200
+                )
+                updated_count = len(to_update)
+
+        return Response({
+            'success': True,
+            'message': f'Manual import completed. {created_count} created, {updated_count} updated.',
+            'created_count': created_count,
+            'updated_count': updated_count,
+            'failed_count': failed_count,
+            'total_processed': len(parsed_rows),
+        }, status=status.HTTP_200_OK)
+
+
 
 class LeaveRequestViewSet(viewsets.ModelViewSet):
     queryset = LeaveRequest.objects.all()

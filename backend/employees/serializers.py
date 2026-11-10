@@ -6,7 +6,7 @@ from django.utils.text import slugify
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.conf import settings
-from .models import Hub, Employee, EditRequest, LeaveRequest, Attendance, LiveLocation, EmployeeDocument, Payroll, ActivityLog, SecurityAlert, HRPermission, SavedImage, PaymentAccount
+from .models import Hub, Employee, EditRequest, LeaveRequest, Attendance, ManualAttendance, LiveLocation, EmployeeDocument, Payroll, ActivityLog, SecurityAlert, HRPermission, SavedImage, PaymentAccount
 from django.http import QueryDict
 
 from .media_urls import absolute_media_url
@@ -147,6 +147,33 @@ class AttendanceSerializer(serializers.ModelSerializer):
             'approved_by',
             'approved_at',
         ]
+
+class ManualAttendanceSerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
+    employee_id = serializers.CharField(source='employee.employee_id', read_only=True)
+    jtp_code = serializers.CharField(source='employee.jtp_code', read_only=True)
+    hub_name = serializers.CharField(source='employee.hub.name', read_only=True)
+    hub = serializers.IntegerField(source='employee.hub.id', read_only=True)
+
+    class Meta:
+        model = ManualAttendance
+        fields = [
+            'id',
+            'employee',
+            'employee_name',
+            'employee_id',
+            'jtp_code',
+            'hub',
+            'hub_name',
+            'date',
+            'status',
+            'clock_in_time',
+            'clock_out_time',
+            'is_approved',
+            'created_at',
+            'updated_at',
+        ]
+
 
     def _get_saved_image(self, obj, image_type):
         prefetched = getattr(obj, '_prefetched_objects_cache', {}).get('saved_images')

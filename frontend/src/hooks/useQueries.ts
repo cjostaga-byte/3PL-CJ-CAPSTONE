@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { authAPI, employeeAPI, hubAPI, attendanceAPI, payrollAPI, editRequestAPI, leaveRequestAPI, activityLogAPI, securityAlertAPI, documentAPI, dashboardAPI, paymentAccountAPI, liveLocationAPI, predictionsAPI } from '@/api/apiService';
+import { authAPI, employeeAPI, hubAPI, attendanceAPI, manualAttendanceAPI, payrollAPI, editRequestAPI, leaveRequestAPI, activityLogAPI, securityAlertAPI, documentAPI, dashboardAPI, paymentAccountAPI, liveLocationAPI, predictionsAPI } from '@/api/apiService';
 import { QUERY_KEYS } from '@/constants/api';
 
 // Auth hooks
@@ -151,6 +151,22 @@ export const useGetAttendance = (params?: Record<string, any>) => {
     queryKey: [QUERY_KEYS.ATTENDANCE, params],
     queryFn: () => attendanceAPI.getAttendance(params),
     staleTime: 1 * 60 * 1000, // 1 minute
+    enabled: isEnabled,
+    placeholderData: (previousData: any) => previousData,
+  });
+};
+
+export const useGetManualAttendance = (params?: Record<string, any>) => {
+  const isEnabled = !params || !('employee_id' in params) || (
+    params.employee_id !== undefined && 
+    params.employee_id !== 'undefined' && 
+    params.employee_id !== null && 
+    !Number.isNaN(Number(params.employee_id))
+  );
+  return useQuery({
+    queryKey: ['manual-attendance', params],
+    queryFn: () => manualAttendanceAPI.getManualAttendance(params),
+    staleTime: 1 * 60 * 1000,
     enabled: isEnabled,
     placeholderData: (previousData: any) => previousData,
   });

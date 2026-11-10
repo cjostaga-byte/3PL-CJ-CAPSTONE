@@ -215,7 +215,26 @@ export const attendanceAPI = {
   },
 
   bulkImportAttendance: async (records: Record<string, unknown>[]) => {
-    const response = await apiClient.post('/attendance/bulk-import/', { records });
+    const response = await apiClient.post('/attendance/bulk-import/', { records }, {
+      timeout: 120000,
+    });
+    return response.data;
+  },
+};
+
+/* =========================
+   MANUAL ATTENDANCE API
+========================= */
+export const manualAttendanceAPI = {
+  getManualAttendance: async (params?: Record<string, unknown>) => {
+    const response = await apiClient.get('/manual-attendance/', { params });
+    return response.data;
+  },
+
+  bulkImportManualAttendance: async (records: Record<string, unknown>[]) => {
+    const response = await apiClient.post('/manual-attendance/bulk-import/', { records }, {
+      timeout: 120000,
+    });
     return response.data;
   },
 };

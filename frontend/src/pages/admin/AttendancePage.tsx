@@ -7,12 +7,12 @@ import AdminMobileProfile from '@/components/AdminMobileProfile';
 
 import { Card, Badge, LoadingSpinner, EmptyState } from '@/components/common';
 import { SkeletonTable, SkeletonStatCard } from '@/components/Skeleton';
-import { useGetAttendance, useGetHubs, useGetEmployees, useApproveAttendance, useDisapproveAttendance } from '@/hooks/useQueries';
+import { useGetAttendance, useGetManualAttendance, useGetHubs, useGetEmployees, useApproveAttendance, useDisapproveAttendance } from '@/hooks/useQueries';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
 import { Download, Search, Clock, Upload } from 'lucide-react';
 import { normalizeApiResponse } from '@/utils/apiResponseHandler';
-import { attendanceAPI } from '@/api/apiService';
+import { attendanceAPI, manualAttendanceAPI } from '@/api/apiService';
 import { QUERY_KEYS } from '@/constants/api';
 import * as XLSX from 'xlsx';
 
@@ -92,12 +92,21 @@ export const AttendancePage = () => {
 
 
 
-  // Fetch data with server-side date filter to prevent loading thousands of records
-  const { data: attendanceData, isLoading: attendanceLoading } = useGetAttendance({ date: dateFilter });
+  // Fetch automatic attendance and manual attendance separately to keep records isolated
+  const { data: autoAttendanceData, isLoading: autoAttendanceLoading } = useGetAttendance({ date: dateFilter });
+  const { data: manualAttendanceData, isLoading: manualAttendanceLoading } = useGetManualAttendance({ date: dateFilter });
   const { data: hubsData, isLoading: hubsLoading } = useGetHubs();
   const { data: employeesData, isLoading: employeesLoading } = useGetEmployees({ tab: 'current' });
 
-  const attendance = normalizeApiResponse(attendanceData);
+  const autoAttendance = useMemo(() => normalizeApiResponse(autoAttendanceData), [autoAttendanceData]);
+  const manualAttendance = useMemo(() => normalizeApiResponse(manualAttendanceData), [manualAttendanceData]);
+
+  // When Mode is 'Manual', render manual attendance records; when 'Automatic', render automatic attendance records!
+  const attendance = useMemo(() => {
+    return modeFilter === 'Manual' ? manualAttendance : autoAttendance;
+  }, [modeFilter, manualAttendance, autoAttendance]);
+
+  const attendanceLoading = modeFilter === 'Manual' ? manualAttendanceLoading : autoAttendanceLoading;
   const rawHubs = normalizeApiResponse(hubsData);
   const rawEmployees = normalizeApiResponse(employeesData);
 
@@ -359,7 +368,14 @@ export const AttendancePage = () => {
         };
       });
 
-      const res = await attendanceAPI.bulkImportAttendance(recordsToImport);
+      let res: any;
+      if (modeFilter === 'Manual') {
+        res = await manualAttendanceAPI.bulkImportManualAttendance(recordsToImport);
+        await queryClient.invalidateQueries({ queryKey: ['manual-attendance'] });
+      } else {
+        res = await attendanceAPI.bulkImportAttendance(recordsToImport);
+        await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.ATTENDANCE] });
+      }
 
       const created = res.created_count ?? 0;
       const updated = res.updated_count ?? 0;
@@ -372,8 +388,6 @@ export const AttendancePage = () => {
       } else {
         toast.success('No attendance records were modified.');
       }
-
-      await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.ATTENDANCE] });
     } catch (err: any) {
       console.error('Import error:', err);
       toast.error(err?.response?.data?.error || err?.message || 'Failed to import attendance records');

@@ -323,6 +323,33 @@ class Attendance(models.Model):
     def __str__(self):
         return f"{self.employee.full_name} - {self.date}"
 
+class ManualAttendance(models.Model):
+    """Stores manual attendance imported or entered separately from automatic clock-ins."""
+    employee = models.ForeignKey(
+        Employee,
+        on_delete=models.CASCADE,
+        related_name='manual_attendance_records'
+    )
+    date = models.DateField(db_index=True)
+    clock_in_time = models.DateTimeField(null=True, blank=True)
+    clock_out_time = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, default='Present')
+    is_approved = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['employee', 'date']
+        ordering = ['-date']
+        indexes = [
+            models.Index(fields=['date'], name='manual_att_date_idx'),
+            models.Index(fields=['employee', 'date'], name='manual_att_emp_date_idx'),
+        ]
+
+    def __str__(self):
+        return f"Manual: {self.employee.full_name} - {self.date} ({self.status})"
+
+
 # ===================== LOCATION =====================
 
 class LiveLocation(models.Model):
