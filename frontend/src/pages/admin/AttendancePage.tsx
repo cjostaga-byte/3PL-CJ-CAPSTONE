@@ -140,13 +140,38 @@ export const AttendancePage = () => {
     });
   }, [allEmployees]);
 
-  // Calculate stats - Presents, Absents, Lates
+  // Calculate stats - Presents, Absents, Lates (separately for Automatic vs Manual, respecting hubFilter)
   const stats = useMemo(() => {
-    const totalEmployees = employees.length;
+    const targetEmployees = hubFilter === 'All'
+      ? employees
+      : employees.filter((emp: any) => (emp.hub_name === hubFilter || emp.hub === hubFilter));
+
+    const totalEmployees = targetEmployees.length;
     
+    // Map of employees in scope to count their status
+    const targetEmpKeys = new Set<string>();
+    targetEmployees.forEach((emp: any) => {
+      if (emp.id) targetEmpKeys.add(emp.id.toString());
+      if (emp.employee_id) targetEmpKeys.add(emp.employee_id.toString().trim().toUpperCase());
+      if (emp.jtp_code) targetEmpKeys.add(emp.jtp_code.toString().trim().toUpperCase());
+    });
+
     const todaysAttendance = attendance.filter((a: any) => {
       const aDate = a.date || (a.clock_in_time ? a.clock_in_time.split('T')[0] : '');
-      return !dateFilter || aDate === dateFilter;
+      const matchesDate = !dateFilter || aDate === dateFilter;
+      if (!matchesDate) return false;
+
+      if (hubFilter === 'All') return true;
+      const empPk = (typeof a.employee === 'object' ? a.employee?.id : a.employee)?.toString();
+      const empId = a.employee_id?.toString().trim().toUpperCase();
+      const jtp = a.jtp_code?.toString().trim().toUpperCase();
+      return (
+        (empPk && targetEmpKeys.has(empPk)) ||
+        (empId && targetEmpKeys.has(empId)) ||
+        (jtp && targetEmpKeys.has(jtp)) ||
+        a.hub_name === hubFilter ||
+        a.hub === hubFilter
+      );
     });
 
     const presents = todaysAttendance.filter((a: any) => a.status === 'Present').length;
@@ -159,7 +184,7 @@ export const AttendancePage = () => {
       absents: absents > 0 ? absents : 0,
       lates,
     };
-  }, [attendance, employees, dateFilter]);
+  }, [attendance, employees, dateFilter, hubFilter]);
 
   // Group attendance by hub
   const attendanceByHub = useMemo(() => {
@@ -170,10 +195,14 @@ export const AttendancePage = () => {
       return !dateFilter || aDate === dateFilter;
     });
 
+    // Multi-key attendance index (by PK, employee_id, jtp_code, and lowercase name)
     const attendanceMap = new Map();
     todaysAttendance.forEach((a: any) => {
-      const empId = a.employee || a.employee_id || a.jtp_code;
-      if (empId) attendanceMap.set(empId.toString(), a);
+      const empPk = typeof a.employee === 'object' ? a.employee?.id : a.employee;
+      if (empPk) attendanceMap.set(empPk.toString(), a);
+      if (a.employee_id) attendanceMap.set(a.employee_id.toString().trim().toUpperCase(), a);
+      if (a.jtp_code) attendanceMap.set(a.jtp_code.toString().trim().toUpperCase(), a);
+      if (a.employee_name) attendanceMap.set(a.employee_name.toString().trim().toLowerCase(), a);
     });
 
     employees.forEach((emp: any) => {
@@ -188,8 +217,12 @@ export const AttendancePage = () => {
         grouped[hubName] = [];
       }
 
-      const empIdStr = (emp.id || emp.employee_id || emp.jtp_code)?.toString();
-      const existingRecord = attendanceMap.get(empIdStr);
+      // Robust matching against any identifier
+      const existingRecord =
+        (emp.id ? attendanceMap.get(emp.id.toString()) : null) ||
+        (emp.jtp_code ? attendanceMap.get(emp.jtp_code.toString().trim().toUpperCase()) : null) ||
+        (emp.employee_id ? attendanceMap.get(emp.employee_id.toString().trim().toUpperCase()) : null) ||
+        (emp.full_name ? attendanceMap.get(emp.full_name.toString().trim().toLowerCase()) : null);
 
       const record = {
         ...(existingRecord || {}),

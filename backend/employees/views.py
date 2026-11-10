@@ -951,6 +951,7 @@ class AttendanceViewSet(viewsets.ModelViewSet):
     """ViewSet for attendance records - clock in/out with images"""
     serializer_class = AttendanceSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None
     
     def get_queryset(self):
         queryset = Attendance.objects.exclude(
@@ -1568,6 +1569,7 @@ class ManualAttendanceViewSet(viewsets.ModelViewSet):
     """ViewSet for manual attendance records entered or imported separately from automatic clock-ins."""
     serializer_class = ManualAttendanceSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = None
 
     def get_queryset(self):
         queryset = ManualAttendance.objects.exclude(
