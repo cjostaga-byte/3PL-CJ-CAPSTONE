@@ -148,48 +148,6 @@ class AttendanceSerializer(serializers.ModelSerializer):
             'approved_at',
         ]
 
-class ManualAttendanceSerializer(serializers.ModelSerializer):
-    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
-    employee_id = serializers.CharField(source='employee.employee_id', read_only=True)
-    jtp_code = serializers.CharField(source='employee.jtp_code', read_only=True)
-    hub_name = serializers.CharField(source='employee.hub.name', read_only=True)
-    hub = serializers.IntegerField(source='employee.hub.id', read_only=True)
-    clock_in_image = serializers.SerializerMethodField()
-    clock_out_image = serializers.SerializerMethodField()
-
-    def get_clock_in_image(self, obj):
-        if obj.clock_in_image:
-            return absolute_media_url(obj.clock_in_image.url, self.context.get('request'))
-        return obj.photo_url or None
-
-    def get_clock_out_image(self, obj):
-        if obj.clock_out_image:
-            return absolute_media_url(obj.clock_out_image.url, self.context.get('request'))
-        return None
-
-    class Meta:
-        model = ManualAttendance
-        fields = [
-            'id',
-            'employee',
-            'employee_name',
-            'employee_id',
-            'jtp_code',
-            'hub',
-            'hub_name',
-            'date',
-            'status',
-            'clock_in_time',
-            'clock_out_time',
-            'clock_in_image',
-            'clock_out_image',
-            'photo_url',
-            'is_approved',
-            'created_at',
-            'updated_at',
-        ]
-
-
     def _get_saved_image(self, obj, image_type):
         prefetched = getattr(obj, '_prefetched_objects_cache', {}).get('saved_images')
         if prefetched is not None:
@@ -289,6 +247,48 @@ class ManualAttendanceSerializer(serializers.ModelSerializer):
             }
         return None
 # ✅ DEFINE THIS FIRST
+class ManualAttendanceSerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source='employee.full_name', read_only=True)
+    employee_id = serializers.CharField(source='employee.employee_id', read_only=True)
+    jtp_code = serializers.CharField(source='employee.jtp_code', read_only=True)
+    hub_name = serializers.CharField(source='employee.hub.name', read_only=True)
+    hub = serializers.IntegerField(source='employee.hub.id', read_only=True)
+    clock_in_image = serializers.SerializerMethodField()
+    clock_out_image = serializers.SerializerMethodField()
+
+    def get_clock_in_image(self, obj):
+        if obj.clock_in_image:
+            return absolute_media_url(self.context.get('request'), obj.clock_in_image.url)
+        return obj.photo_url or None
+
+    def get_clock_out_image(self, obj):
+        if obj.clock_out_image:
+            return absolute_media_url(self.context.get('request'), obj.clock_out_image.url)
+        return None
+
+    class Meta:
+        model = ManualAttendance
+        fields = [
+            'id',
+            'employee',
+            'employee_name',
+            'employee_id',
+            'jtp_code',
+            'hub',
+            'hub_name',
+            'date',
+            'status',
+            'clock_in_time',
+            'clock_out_time',
+            'clock_in_image',
+            'clock_out_image',
+            'photo_url',
+            'is_approved',
+            'created_at',
+            'updated_at',
+        ]
+
+
 class EmployeeDocumentSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
 
