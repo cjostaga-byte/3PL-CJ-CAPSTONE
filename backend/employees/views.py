@@ -1622,17 +1622,27 @@ class ManualAttendanceViewSet(viewsets.ModelViewSet):
         from django.utils import timezone
         from django.db import transaction
 
+        import zoneinfo
+        try:
+            manila_tz = zoneinfo.ZoneInfo('Asia/Manila')
+        except Exception:
+            manila_tz = timezone.get_current_timezone()
+
         def _parse_time_val(val, d):
             if not val or str(val).strip() in ('-', '', 'null', 'none', 'None'):
                 return None
             val_str = str(val).strip()
+            # If already full ISO string with timezone offset
             dt = parse_datetime(val_str)
             if dt:
+                if timezone.is_naive(dt):
+                    return timezone.make_aware(dt, timezone=manila_tz)
                 return dt
-            for fmt in ('%I:%M %p', '%I:%M:%S %p', '%H:%M', '%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %I:%M %p'):
+            for fmt in ('%I:%M %p', '%I:%M:%S %p', '%I:%M%p', '%I:%M:%S%p', '%H:%M', '%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %I:%M %p'):
                 try:
                     parsed_t = datetime.strptime(val_str, fmt)
-                    return timezone.make_aware(datetime.combine(d, parsed_t.time()))
+                    comb = datetime.combine(d, parsed_t.time())
+                    return timezone.make_aware(comb, timezone=manila_tz)
                 except Exception:
                     continue
             return None
@@ -1677,11 +1687,16 @@ class ManualAttendanceViewSet(viewsets.ModelViewSet):
             clock_in = _parse_time_val(raw_in, att_date)
             clock_out = _parse_time_val(raw_out, att_date)
 
+            raw_photo = str(item.get('photo') or item.get('photo_url') or item.get('image') or item.get('image_url') or '').strip()
+            if raw_photo.lower() in ('no photo', '-', 'none', 'null', 'n/a'):
+                raw_photo = ''
+
             raw_status = str(item.get('status') or '').strip()
             if raw_status and raw_status.lower() in ('present', 'late', 'absent'):
                 att_status = raw_status.capitalize()
             elif clock_in:
-                if clock_in.time() >= time(9, 0):
+                manila_time = clock_in.astimezone(manila_tz).time()
+                if manila_time >= time(9, 0):
                     att_status = 'Late'
                 else:
                     att_status = 'Present'
@@ -1693,6 +1708,7 @@ class ManualAttendanceViewSet(viewsets.ModelViewSet):
                 'date': att_date,
                 'clock_in_time': clock_in,
                 'clock_out_time': clock_out,
+                'photo_url': raw_photo or None,
                 'status': att_status,
             })
 
@@ -1713,6 +1729,8 @@ class ManualAttendanceViewSet(viewsets.ModelViewSet):
                 obj.clock_in_time = row['clock_in_time']
                 obj.clock_out_time = row['clock_out_time']
                 obj.status = row['status']
+                if row.get('photo_url'):
+                    obj.photo_url = row['photo_url']
                 obj.is_approved = True
                 to_update.append(obj)
             else:
@@ -1721,6 +1739,7 @@ class ManualAttendanceViewSet(viewsets.ModelViewSet):
                     date=row['date'],
                     clock_in_time=row['clock_in_time'],
                     clock_out_time=row['clock_out_time'],
+                    photo_url=row.get('photo_url'),
                     status=row['status'],
                     is_approved=True
                 ))
@@ -1735,7 +1754,7 @@ class ManualAttendanceViewSet(viewsets.ModelViewSet):
             if to_update:
                 ManualAttendance.objects.bulk_update(
                     to_update,
-                    ['clock_in_time', 'clock_out_time', 'status', 'is_approved'],
+                    ['clock_in_time', 'clock_out_time', 'status', 'photo_url', 'is_approved'],
                     batch_size=200
                 )
                 updated_count = len(to_update)
@@ -1749,6 +1768,22 @@ class ManualAttendanceViewSet(viewsets.ModelViewSet):
             'total_processed': len(parsed_rows),
         }, status=status.HTTP_200_OK)
 
+
+
+    @action(detail=True, methods=['post'], parser_classes=[MultiPartParser, FormParser], url_path='upload-photo')
+    def upload_photo(self, request, pk=None):
+        """Upload clock-in photo for manual attendance record."""
+        try:
+            record = self.get_object()
+            img_file = request.FILES.get('clock_in_image') or request.FILES.get('image') or request.FILES.get('photo')
+            if not img_file:
+                return Response({'error': 'No image file provided'}, status=status.HTTP_400_BAD_REQUEST)
+            record.clock_in_image = img_file
+            record.save()
+            serializer = ManualAttendanceSerializer(record, context={'request': request})
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class LeaveRequestViewSet(viewsets.ModelViewSet):

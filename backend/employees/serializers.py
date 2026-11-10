@@ -154,6 +154,18 @@ class ManualAttendanceSerializer(serializers.ModelSerializer):
     jtp_code = serializers.CharField(source='employee.jtp_code', read_only=True)
     hub_name = serializers.CharField(source='employee.hub.name', read_only=True)
     hub = serializers.IntegerField(source='employee.hub.id', read_only=True)
+    clock_in_image = serializers.SerializerMethodField()
+    clock_out_image = serializers.SerializerMethodField()
+
+    def get_clock_in_image(self, obj):
+        if obj.clock_in_image:
+            return absolute_media_url(obj.clock_in_image.url, self.context.get('request'))
+        return obj.photo_url or None
+
+    def get_clock_out_image(self, obj):
+        if obj.clock_out_image:
+            return absolute_media_url(obj.clock_out_image.url, self.context.get('request'))
+        return None
 
     class Meta:
         model = ManualAttendance
@@ -169,6 +181,9 @@ class ManualAttendanceSerializer(serializers.ModelSerializer):
             'status',
             'clock_in_time',
             'clock_out_time',
+            'clock_in_image',
+            'clock_out_image',
+            'photo_url',
             'is_approved',
             'created_at',
             'updated_at',

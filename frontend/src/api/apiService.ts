@@ -237,6 +237,13 @@ export const manualAttendanceAPI = {
     });
     return response.data;
   },
+
+  uploadPhoto: async (id: number, formData: FormData) => {
+    const response = await apiClient.post(`/manual-attendance/${id}/upload-photo/`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
 };
 
 /* =========================

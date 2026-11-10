@@ -42,8 +42,8 @@ export const AttendancePage = () => {
 
   const openPhotoViewer = (record: any) => {
     setSelectedRecord(record);
-    setSelectedClockInImage(record.clock_in_image ?? null);
-    setSelectedClockOutImage(record.clock_out_image ?? null);
+    setSelectedClockInImage(record.clock_in_image || record.photo_url || null);
+    setSelectedClockOutImage(record.clock_out_image || null);
     setPhotoViewerOpen(true);
   };
 
@@ -331,18 +331,37 @@ export const AttendancePage = () => {
       'Time In': record.clock_in_time ? formatTime(record.clock_in_time) : '',
       'Time Out': record.clock_out_time ? formatTime(record.clock_out_time) : '',
       'Status': record.status || 'Present',
+      'Photo': record.clock_in_image || record.photo_url || '',
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(exportRows);
     worksheet['!cols'] = [
       { wch: 26 },
       { wch: 16 },
-      { wch: 22 },
+      { wch: 24 },
       { wch: 14 },
       { wch: 14 },
       { wch: 14 },
-      { wch: 14 },
+      { wch: 12 },
+      { wch: 35 },
     ];
+
+    // Pre-format Date and Time columns in Excel
+    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1:H1');
+    for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+      // Column D (index 3): Date
+      const dateCell = worksheet[XLSX.utils.encode_cell({ r: R, c: 3 })];
+      if (dateCell) dateCell.z = 'yyyy-mm-dd';
+
+      // Column E (index 4): Time In
+      const timeInCell = worksheet[XLSX.utils.encode_cell({ r: R, c: 4 })];
+      if (timeInCell) timeInCell.z = 'hh:mm AM/PM';
+
+      // Column F (index 5): Time Out
+      const timeOutCell = worksheet[XLSX.utils.encode_cell({ r: R, c: 5 })];
+      if (timeOutCell) timeOutCell.z = 'hh:mm AM/PM';
+    }
+
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendance');
     const fileName = `${hubName.replace(/\s+/g, '_')}_attendance_${dateFilter || new Date().toISOString().split('T')[0]}.xlsx`;
@@ -398,6 +417,7 @@ export const AttendancePage = () => {
           time_in: getVal('Time In', 'TimeIn', 'Clock In', 'ClockIn'),
           time_out: getVal('Time Out', 'TimeOut', 'Clock Out', 'ClockOut'),
           status: getVal('Status'),
+          photo: getVal('Photo', 'Photo URL', 'Image', 'Image URL'),
         };
       });
 
@@ -783,7 +803,7 @@ export const AttendancePage = () => {
                             </Badge>
                           </td>
                           <td className="px-4 py-3 text-center">
-                            {(record.clock_in_image || record.clock_out_image) ? (
+                            {(record.clock_in_image || record.clock_out_image || record.photo_url) ? (
                               <button
                                 type="button"
                                 onClick={() => openPhotoViewer(record)}
@@ -791,6 +811,32 @@ export const AttendancePage = () => {
                               >
                                 View
                               </button>
+                            ) : modeFilter === 'Manual' && record.id ? (
+                              <label className="cursor-pointer text-blue-600 hover:text-blue-800 font-semibold text-xs inline-flex items-center justify-center gap-1">
+                                <Upload size={13} />
+                                <span>Upload</span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    const fd = new FormData();
+                                    fd.append('clock_in_image', file);
+                                    const ldr = toast.loading('Uploading photo...');
+                                    try {
+                                      await manualAttendanceAPI.uploadPhoto(record.id, fd);
+                                      toast.success('Photo uploaded successfully');
+                                      queryClient.invalidateQueries({ queryKey: ['manual-attendance'] });
+                                    } catch (err: any) {
+                                      toast.error(err?.response?.data?.error || 'Failed to upload photo');
+                                    } finally {
+                                      toast.dismiss(ldr);
+                                    }
+                                  }}
+                                />
+                              </label>
                             ) : (
                               <span className="text-gray-400">No photo</span>
                             )}
@@ -848,7 +894,7 @@ export const AttendancePage = () => {
                       </div>
 
                       <div className="flex flex-col gap-2 mt-2">
-                        {(record.clock_in_image || record.clock_out_image) && (
+                        {(record.clock_in_image || record.clock_out_image || record.photo_url) ? (
                           <button
                             type="button"
                             onClick={() => openPhotoViewer(record)}
@@ -856,7 +902,33 @@ export const AttendancePage = () => {
                           >
                             View Photos
                           </button>
-                        )}
+                        ) : modeFilter === 'Manual' && record.id ? (
+                          <label className="cursor-pointer w-full bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 font-bold py-2 px-4 rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5">
+                            <Upload size={14} />
+                            <span>Upload Photo</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                const fd = new FormData();
+                                fd.append('clock_in_image', file);
+                                const ldr = toast.loading('Uploading photo...');
+                                try {
+                                  await manualAttendanceAPI.uploadPhoto(record.id, fd);
+                                  toast.success('Photo uploaded successfully');
+                                  queryClient.invalidateQueries({ queryKey: ['manual-attendance'] });
+                                } catch (err: any) {
+                                  toast.error(err?.response?.data?.error || 'Failed to upload photo');
+                                } finally {
+                                  toast.dismiss(ldr);
+                                }
+                              }}
+                            />
+                          </label>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => navigate(`${basePath}/attendance/employee/${record.employee}`)}

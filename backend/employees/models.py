@@ -335,6 +335,9 @@ class ManualAttendance(models.Model):
     clock_out_time = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=20, default='Present')
     is_approved = models.BooleanField(default=True)
+    clock_in_image = models.ImageField(upload_to=attendance_clock_in_path, null=True, blank=True)
+    clock_out_image = models.ImageField(upload_to=attendance_clock_out_path, null=True, blank=True)
+    photo_url = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
