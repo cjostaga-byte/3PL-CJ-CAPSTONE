@@ -11,6 +11,8 @@ interface AttendanceSidebarProps {
   hideHeader?: boolean;
 }
 
+const ALLOWED_CLOCK_DISTANCE_METERS = 50; // Geofence radius for clock-in and clock-out
+
 const formatAttendanceTime = (timeStr: string | undefined | null) => {
   if (!timeStr) return '-- : --';
   try {
@@ -133,8 +135,8 @@ export const AttendanceSidebar = ({ employeeId, onViewHistory, hideHeader }: Att
     }
 
     const distance = getDistance(userLat, userLng, assignedHub.latitude, assignedHub.longitude);
-    if (distance > 10) {
-      toast.error(`You are too far from your assigned delivery center (${assignedHub.name}). You are currently ${distance.toFixed(1)}m away. Allowed distance: 10m.`);
+    if (distance > ALLOWED_CLOCK_DISTANCE_METERS) {
+      toast.error(`You are too far from your assigned delivery center (${assignedHub.name}). You are currently ${distance.toFixed(1)}m away. Allowed distance: ${ALLOWED_CLOCK_DISTANCE_METERS}m.`);
       return;
     }
 
@@ -178,8 +180,8 @@ export const AttendanceSidebar = ({ employeeId, onViewHistory, hideHeader }: Att
     }
 
     const distance = getDistance(userLat, userLng, assignedHub.latitude, assignedHub.longitude);
-    if (distance > 10) {
-      toast.error(`You are too far from your assigned delivery center (${assignedHub.name}). You are currently ${distance.toFixed(1)}m away. Allowed distance: 10m.`);
+    if (distance > ALLOWED_CLOCK_DISTANCE_METERS) {
+      toast.error(`You are too far from your assigned delivery center (${assignedHub.name}). You are currently ${distance.toFixed(1)}m away. Allowed distance: ${ALLOWED_CLOCK_DISTANCE_METERS}m.`);
       return;
     }
 
