@@ -109,13 +109,12 @@ export const EmployeeEditModal = ({ isOpen, onClose, employee, onSuccess }: Empl
       return;
     }
     if (name === 'province') {
-      const autoZip = getPhilippineZipCode('', value);
       setFormData((prev) => ({
         ...prev,
         province: value,
         city_municipality: '',
         barangay: '',
-        zip_code: autoZip,
+        zip_code: '',
       }));
       return;
     }
@@ -416,9 +415,9 @@ export const EmployeeEditModal = ({ isOpen, onClose, employee, onSuccess }: Empl
                 </label>
                 <input
                   value={formData['zip_code'] ?? ''}
-                  readOnly
+                  onChange={(e) => handleChange('zip_code', e.target.value)}
                   placeholder="Auto-populated"
-                  className="w-full px-4 py-3 rounded-lg border border-dashed border-gray-300 bg-gray-100/80 dark:border-gray-700 dark:bg-gray-900/80 text-sm font-mono font-medium text-gray-700 dark:text-gray-300 cursor-not-allowed"
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-800 text-sm font-mono font-medium text-gray-700 dark:text-gray-300"
                 />
               </div>
             </div>

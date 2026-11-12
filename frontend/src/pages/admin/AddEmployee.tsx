@@ -323,13 +323,12 @@ export const AddEmployee = ({ onCancel, onClose, onCreated }: AddEmployeeProps) 
       return;
     }
     if (name === 'province') {
-      const autoZip = getPhilippineZipCode('', value);
       setFormState((prev) => ({
         ...prev,
         province: value,
         cityMunicipality: '',
         barangay: '',
-        zipCode: autoZip,
+        zipCode: '',
       }));
       return;
     }
@@ -802,9 +801,9 @@ export const AddEmployee = ({ onCancel, onClose, onCreated }: AddEmployeeProps) 
                         <input
                           name="zipCode"
                           value={formState.zipCode}
-                          readOnly
+                          onChange={handleChange}
                           placeholder="Auto-populated from address"
-                          className={iconInputCls + ' bg-slate-100/80 dark:bg-slate-900/80 font-mono font-medium text-slate-700 dark:text-slate-300 cursor-not-allowed border-dashed'}
+                          className={iconInputCls + ' font-mono font-medium text-slate-700 dark:text-slate-300'}
                         />
                       </div>
                     </div>
